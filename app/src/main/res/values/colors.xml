@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+        Muhafız temel renkleri.
+
+        Not:
+        purple_* ve teal_* isimleri eski Android template'inden geliyor olabilir.
+        Eğer styles/themes XML dosyalarında bu isimlere referans varsa build kırılmasın diye
+        isimleri şimdilik koruyoruz, fakat değerleri Muhafız ürün kimliğine uygun hale getiriyoruz.
+    -->
+
+    <!-- Ana marka rengi: ciddi koyu gri / siyah ton -->
+    <color name="purple_500">#FF1F2937</color>
+
+    <!-- Açık varyant: kart, yüzey veya vurgu arka planlarında kullanılabilir -->
+    <color name="purple_200">#FFE5E7EB</color>
+
+    <!-- Koyu varyant: status bar / navigation bar gibi alanlarda kullanılabilir -->
+    <color name="purple_700">#FF111827</color>
+
+    <!-- Yardımcı vurgu rengi: güvenlik/aksiyon hissi için kontrollü mavi -->
+    <color name="teal_200">#FF93C5FD</color>
+
+    <!-- Daha koyu vurgu rengi -->
+    <color name="teal_700">#FF2563EB</color>
+
+    <!-- Tam ekran engelleme ekranı için saf siyah -->
+    <color name="black">#FF000000</color>
+
+    <!-- Overlay mesaj metni için saf beyaz -->
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Muhafız'a özel açık isimli renkler -->
+    <color name="muhafiz_primary">#FF1F2937</color>
+    <color name="muhafiz_primary_dark">#FF111827</color>
+    <color name="muhafiz_accent">#FF2563EB</color>
+    <color name="muhafiz_background">#FFF8FAFC</color>
+    <color name="muhafiz_surface">#FFFFFFFF</color>
+    <color name="muhafiz_error">#FFBA1A1A</color>
+
+</resources>

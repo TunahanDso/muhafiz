@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+        Uygulamanın Android XML tabanlı ana teması.
+
+        Not:
+        Manifest tarafında hâlâ Theme.Nazar referansı olabilir.
+        Package ve eski tema referanslarını şimdilik korumak build açısından daha güvenlidir.
+        Dışarıdan görünen ürün adı ise strings.xml üzerinden Muhafız olarak ayarlanır.
+    -->
+    <style name="Theme.Nazar" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+
+        <!-- Temel pencere renkleri -->
+        <item name="android:windowBackground">@color/muhafiz_background</item>
+        <item name="android:colorAccent">@color/muhafiz_accent</item>
+
+        <!-- Sistem bar renkleri -->
+        <item name="android:statusBarColor">@color/muhafiz_primary_dark</item>
+        <item name="android:navigationBarColor">@color/muhafiz_primary_dark</item>
+
+        <!-- Açık tema karakteri korunur -->
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+
+    <!--
+        Yeni isimli tema alias'ı.
+        İleride Manifest içindeki Theme.Nazar referansı Theme.Muhafiz yapılırsa hazır olur.
+    -->
+    <style name="Theme.Muhafiz" parent="Theme.Nazar" />
+
+</resources>
