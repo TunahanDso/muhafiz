@@ -63,7 +63,40 @@ Tüm analiz işlemleri cihaz üzerinde gerçekleştirilir. Ekran verileri kayded
 
 Muhafız, Google Play Billing altyapısı ile aylık abonelik modelini destekler.
 
-Kullanılan abonelik ürün kimliği:
+---
 
-```text
-muhafiz_monthly
+Abonelik işlemleri Google Play tarafından yönetilir. Uygulama ödeme bilgisi toplamaz veya saklamaz.
+
+---
+
+## 📦 Paket Bilgisi
+
+**Play Store ürün adı:**  
+Muhafız
+
+**Kod tarafındaki package/namespace:**  
+com.tunix.nazar
+
+**Play Store applicationId:**  
+com.tunix.muhafiz
+
+---
+
+## 🔒 Gizlilik Politikası
+
+Gizlilik politikası GitHub Pages üzerinden yayınlanmaktadır:  
+https://tunahandso.github.io/muhafiz/
+
+---
+
+## ⚠️ Not
+
+Bu proje, ebeveyn kontrolü ve güvenli ekran deneyimi amacıyla geliştirilmiştir.
+
+Android güvenlik politikaları gereği, cihaz yeniden başlatıldığında ekran yakalama izninin kullanıcı tarafından tekrar verilmesi gerekebilir.
+
+---
+
+## 👤 Geliştirici
+
+Tunahan Delisalihoğlu
