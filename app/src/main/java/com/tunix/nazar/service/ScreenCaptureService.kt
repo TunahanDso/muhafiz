@@ -21,6 +21,7 @@ import com.tunix.nazar.ml.BinaryNsfwResult
 import com.tunix.nazar.projection.ImageFrameReader
 import com.tunix.nazar.projection.ProjectionController
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 class ScreenCaptureService : Service() {
 
@@ -38,6 +39,18 @@ class ScreenCaptureService : Service() {
     private val isProcessingFrame = AtomicBoolean(false)
     private val serviceRunning = AtomicBoolean(false)
     private val isReconfiguringCapture = AtomicBoolean(false)
+
+    /*
+     * Her capture reader/session değişiminde artar.
+     * Eski reader'dan veya kapanmış oturumdan geç gelen analiz
+     * sonuçlarının overlay/state değiştirmesini engeller.
+     */
+    private val captureGeneration = AtomicLong(0L)
+
+    /*
+     * Sistem kaynaklı MediaProjection kapanışını yalnızca bir kez işler.
+     */
+    private val projectionTerminationHandled = AtomicBoolean(false)
 
     private var lastAnalysisTimestamp: Long = 0L
     private var lastNotificationTimestamp: Long = 0L
@@ -99,7 +112,13 @@ class ScreenCaptureService : Service() {
     override fun onCreate() {
         super.onCreate()
 
-        projectionController = ProjectionController(this)
+        projectionController =
+            ProjectionController(
+                context = this,
+                onProjectionStoppedBySystem = {
+                    handleProjectionStoppedBySystem()
+                }
+            )
         binaryNsfwInterpreter = BinaryNsfwInterpreter(this)
 
         notificationManager =
@@ -122,33 +141,24 @@ class ScreenCaptureService : Service() {
     ): Int {
 
         /*
-         * Android servisi yeniden oluşturmuş fakat eski Intent henüz
-         * gelmemiş olabilir.
-         *
-         * Bu durumda aktif MediaProjection varmış gibi davranmıyoruz.
+         * MediaProjection izin Intent'i Android 14+ üzerinde tek
+         * kullanımlıktır. Sistem servisi process death sonrası eski
+         * Intent ile yeniden başlatırsa onu tekrar kullanmıyoruz.
          */
         if (intent == null) {
-            if (serviceRunning.get()) {
-                return START_REDELIVER_INTENT
-            }
-
-            startForeground(
-                NOTIFICATION_ID,
-                buildNotification(
-                    title = "Muhafız koruması beklemede",
-                    text = "Koruma yeniden başlatma verisi bekliyor"
-                )
-            )
-
-            return START_STICKY
+            serviceRunning.set(false)
+            captureGeneration.incrementAndGet()
+            publishProtectionState(false)
+            stopSelf()
+            return START_NOT_STICKY
         }
 
         /*
-         * Koruma zaten gerçekten çalışıyorsa ikinci kez
-         * MediaProjection oluşturmuyoruz.
+         * Aynı çalışan oturuma ikinci start gelirse mevcut capture'ı
+         * bozmadan isteği yok say.
          */
         if (serviceRunning.get()) {
-            return START_REDELIVER_INTENT
+            return START_NOT_STICKY
         }
 
         val resultCode =
@@ -196,6 +206,8 @@ class ScreenCaptureService : Service() {
         }
 
         try {
+            projectionTerminationHandled.set(false)
+
             val modelLoaded =
                 binaryNsfwInterpreter?.loadModel() == true
 
@@ -283,10 +295,11 @@ class ScreenCaptureService : Service() {
         }
 
         /*
-         * Android servis prosesini öldürürse mümkün olduğunda
-         * başlangıç Intent'ini yeniden teslim etmeye çalışır.
+         * MediaProjection consent token yeniden teslim edilemez.
+         * Process/service ölürse kullanıcı korumayı yeniden başlatır
+         * ve yeni sistem izni verir.
          */
-        return START_REDELIVER_INTENT
+        return START_NOT_STICKY
     }
 
     /*
@@ -309,26 +322,31 @@ class ScreenCaptureService : Service() {
 
     override fun onDestroy() {
         /*
-         * ---------------------------------------------------------
-         * GERÇEK KORUMA DURUMUNU KAPAT
-         * ---------------------------------------------------------
-         *
-         * MainActivity bundan sonra isRunning() çağırırsa false
-         * görecektir.
+         * Önce session'ı geçersiz kıl. Böylece o sırada çalışan bir
+         * inference tamamlanırsa sonucu overlay'e uygulayamaz.
          */
+        projectionTerminationHandled.set(true)
         serviceRunning.set(false)
+        captureGeneration.incrementAndGet()
         publishProtectionState(false)
 
         unregisterDeviceStateReceiver()
 
-        hideOverlay(force = true)
-
+        /*
+         * Yeni frame üretimini durdur; ardından projection/model
+         * kaynaklarını bırak. Overlay en son kesin olarak temizlenir.
+         */
         releaseFrameReader()
 
         binaryNsfwInterpreter?.close()
         binaryNsfwInterpreter = null
 
         projectionController.stopProjection()
+
+        isProcessingFrame.set(false)
+        protectionPausedByDeviceLock = false
+
+        hideOverlay(force = true)
 
         keyguardManager = null
         powerManager = null
@@ -356,10 +374,13 @@ class ScreenCaptureService : Service() {
         sendBroadcast(stateIntent)
     }
 
-    private fun handleIncomingFrame(bitmap: Bitmap) {
+    private fun handleIncomingFrame(
+        bitmap: Bitmap,
+        generation: Long
+    ) {
         val now = System.currentTimeMillis()
 
-        if (!serviceRunning.get()) {
+        if (!isAnalysisSessionValid(generation)) {
             bitmap.recycleSafely()
             return
         }
@@ -430,6 +451,14 @@ class ScreenCaptureService : Service() {
                     interpreter = interpreter
                 )
 
+            /*
+             * Inference sürerken servis/projection kapanmış veya
+             * reader değiştirilmiş olabilir.
+             */
+            if (!isAnalysisSessionValid(generation)) {
+                return
+            }
+
             val result =
                 classifiedFrame.result
 
@@ -449,7 +478,9 @@ class ScreenCaptureService : Service() {
                 now = now
             )
         } catch (_: Exception) {
-            keepOrHideOverlayAfterError(now)
+            if (isAnalysisSessionValid(generation)) {
+                keepOrHideOverlayAfterError(now)
+            }
         } finally {
             bitmap.recycleSafely()
             isProcessingFrame.set(false)
@@ -460,52 +491,157 @@ class ScreenCaptureService : Service() {
         val displayMetrics =
             resources.displayMetrics
 
-        screenWidthPx =
+        val newScreenWidth =
             displayMetrics.widthPixels
 
-        screenHeightPx =
+        val newScreenHeight =
             displayMetrics.heightPixels
 
         val analysisSize =
             calculateAnalysisSize(
-                screenWidth = screenWidthPx,
-                screenHeight = screenHeightPx
+                screenWidth = newScreenWidth,
+                screenHeight = newScreenHeight
             )
 
-        analysisWidthPx =
-            analysisSize.width
+        val generation =
+            captureGeneration.incrementAndGet()
 
-        analysisHeightPx =
-            analysisSize.height
-
-        releaseFrameReader()
-
-        imageFrameReader =
+        val reader =
             ImageFrameReader(
-                width = analysisWidthPx,
-                height = analysisHeightPx
-            ).also { reader ->
+                width = analysisSize.width,
+                height = analysisSize.height
+            )
 
-                reader.initialize { bitmap ->
-                    handleIncomingFrame(bitmap)
-                }
+        return try {
+            reader.initialize { bitmap ->
+                handleIncomingFrame(
+                    bitmap = bitmap,
+                    generation = generation
+                )
             }
 
-        val surface =
-            imageFrameReader?.getSurface()
-                ?: return false
+            val surface =
+                reader.getSurface()
+                    ?: throw IllegalStateException(
+                        "ImageReader Surface oluşturulamadı."
+                    )
 
-        projectionController.createVirtualDisplay(
-            name = "MuhafizScreenCapture",
-            width = analysisWidthPx,
-            height = analysisHeightPx,
-            densityDpi = displayMetrics.densityDpi,
-            surface = surface
-        )
+            projectionController.createVirtualDisplay(
+                name = "MuhafizScreenCapture",
+                width = analysisSize.width,
+                height = analysisSize.height,
+                densityDpi = displayMetrics.densityDpi,
+                surface = surface
+            )
 
-        resetDetectionState()
+            releaseFrameReader()
 
-        return true
+            imageFrameReader = reader
+
+            screenWidthPx = newScreenWidth
+            screenHeightPx = newScreenHeight
+            analysisWidthPx = analysisSize.width
+            analysisHeightPx = analysisSize.height
+
+            resetDetectionState()
+
+            true
+        } catch (_: Exception) {
+            try {
+                reader.release()
+            } catch (_: Exception) {
+            }
+
+            false
+        }
+    }
+
+    private fun reconfigureCaptureForCurrentDisplay(): Boolean {
+        val displayMetrics =
+            resources.displayMetrics
+
+        val newScreenWidth =
+            displayMetrics.widthPixels
+
+        val newScreenHeight =
+            displayMetrics.heightPixels
+
+        val analysisSize =
+            calculateAnalysisSize(
+                screenWidth = newScreenWidth,
+                screenHeight = newScreenHeight
+            )
+
+        val generation =
+            captureGeneration.incrementAndGet()
+
+        val newReader =
+            ImageFrameReader(
+                width = analysisSize.width,
+                height = analysisSize.height
+            )
+
+        val oldReader =
+            imageFrameReader
+
+        return try {
+            newReader.initialize { bitmap ->
+                handleIncomingFrame(
+                    bitmap = bitmap,
+                    generation = generation
+                )
+            }
+
+            val newSurface =
+                newReader.getSurface()
+                    ?: throw IllegalStateException(
+                        "Yeni ImageReader Surface oluşturulamadı."
+                    )
+
+            /*
+             * Android 14+:
+             * Aynı MediaProjection üzerinde ikinci
+             * createVirtualDisplay çağrısı yapılmaz.
+             */
+            projectionController.resizeVirtualDisplay(
+                width = analysisSize.width,
+                height = analysisSize.height,
+                densityDpi = displayMetrics.densityDpi,
+                surface = newSurface
+            )
+
+            imageFrameReader = newReader
+
+            screenWidthPx = newScreenWidth
+            screenHeightPx = newScreenHeight
+            analysisWidthPx = analysisSize.width
+            analysisHeightPx = analysisSize.height
+
+            try {
+                oldReader?.release()
+            } catch (_: Exception) {
+            }
+
+            resetDetectionState()
+
+            true
+        } catch (_: Exception) {
+            try {
+                newReader.release()
+            } catch (_: Exception) {
+            }
+
+            /*
+             * Generation değiştiği için eski reader sonuçları artık
+             * bilinçli olarak kabul edilmez. Fail-closed davran:
+             * kullanıcıya aktif koruma varmış gibi gösterme.
+             */
+            handleCaptureFailure(
+                "Ekran yönü değişiminden sonra yakalama yenilenemedi."
+            )
+
+            false
+        }
     }
 
     private fun maybeReconfigureCaptureForRotation(
@@ -548,14 +684,59 @@ class ScreenCaptureService : Service() {
         }
 
         return try {
-            configureCaptureForCurrentDisplay()
+            reconfigureCaptureForCurrentDisplay()
             true
-        } catch (_: Exception) {
-            false
         } finally {
             isReconfiguringCapture.set(false)
         }
     }
+
+    private fun isAnalysisSessionValid(
+        generation: Long
+    ): Boolean {
+        return serviceRunning.get() &&
+                captureGeneration.get() == generation &&
+                projectionController.isProjectionRunning()
+    }
+
+    private fun handleProjectionStoppedBySystem() {
+        if (
+            !projectionTerminationHandled.compareAndSet(
+                false,
+                true
+            )
+        ) {
+            return
+        }
+
+        handleCaptureFailure(
+            "Ekran yakalama sistem tarafından durduruldu. Koruma için yeniden başlatın."
+        )
+    }
+
+    private fun handleCaptureFailure(
+        message: String
+    ) {
+        serviceRunning.set(false)
+        captureGeneration.incrementAndGet()
+        publishProtectionState(false)
+
+        protectionPausedByDeviceLock = false
+
+        releaseFrameReader()
+        hideOverlay(force = true)
+        resetDetectionState()
+
+        updateUserNotification(
+            title = "Muhafız koruması durdu",
+            text = message.take(
+                MAX_NOTIFICATION_TEXT_LENGTH
+            )
+        )
+
+        stopSelf()
+    }
+
 
     private fun calculateAnalysisSize(
         screenWidth: Int,
@@ -634,6 +815,10 @@ class ScreenCaptureService : Service() {
         riskLevel: RiskLevel,
         now: Long
     ) {
+        if (!serviceRunning.get()) {
+            return
+        }
+
         if (shouldSuspendAnalysisBecauseDeviceLocked()) {
             return
         }
@@ -984,11 +1169,13 @@ class ScreenCaptureService : Service() {
          * perdemiz olabilir.
          */
         if (isOverlayVisible) {
-            handleDetectionResult(
-                riskLevel = RiskLevel.NONE,
-                now = now
-            )
-
+            /*
+             * Siyah frame kendi overlay'imiz olabilir. Bu kareyi
+             * "temiz içerik" kanıtı saymak riskli içeriğin tekrar
+             * görünmesine yol açabilir. Fail-closed: overlay açık
+             * kalır ve clear counter ilerlemez.
+             */
+            clearFrameCount = 0
             return true
         }
 
@@ -1214,6 +1401,10 @@ class ScreenCaptureService : Service() {
     }
 
     private fun showOverlay(now: Long) {
+        if (!serviceRunning.get()) {
+            return
+        }
+
         if (
             shouldSuspendAnalysisBecauseDeviceLocked()
         ) {
@@ -1320,6 +1511,11 @@ class ScreenCaptureService : Service() {
 
     private fun resumeProtectionAfterDeviceUnlocked() {
         if (!protectionPausedByDeviceLock) {
+            return
+        }
+
+        if (!projectionController.isProjectionRunning()) {
+            handleProjectionStoppedBySystem()
             return
         }
 
@@ -1540,10 +1736,17 @@ class ScreenCaptureService : Service() {
     private fun keepOrHideOverlayAfterError(
         now: Long
     ) {
-        if (
-            !shouldKeepOverlayVisible(now)
-        ) {
-            hideOverlay()
+        /*
+         * Analiz hatası "temiz içerik" kanıtı değildir.
+         * Overlay zaten açıksa güvenli tarafta kalır; kapalıysa
+         * yalnızca bir sonraki frame beklenir.
+         */
+        if (isOverlayVisible) {
+            lastRiskDetectedTimestamp =
+                maxOf(
+                    lastRiskDetectedTimestamp,
+                    now
+                )
         }
     }
 
