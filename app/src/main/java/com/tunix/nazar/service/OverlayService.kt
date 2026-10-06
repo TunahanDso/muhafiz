@@ -12,9 +12,11 @@ import android.os.PowerManager
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.tunix.nazar.MainActivity
 
 class OverlayService : Service() {
 
@@ -212,6 +214,25 @@ class OverlayService : Service() {
             )
         )
 
+        val safeScreenButton = Button(this).apply {
+            text = getString(com.tunix.nazar.R.string.block_safe_action)
+            isAllCaps = false
+            textSize = 16f
+            setOnClickListener {
+                openMuhafizSafeScreen()
+            }
+        }
+
+        content.addView(
+            safeScreenButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(28)
+            }
+        )
+
         root.addView(
             content,
             FrameLayout.LayoutParams(
@@ -223,6 +244,33 @@ class OverlayService : Service() {
 
         return root
     }
+
+    private fun openMuhafizSafeScreen() {
+        val intent =
+            Intent(
+                this,
+                MainActivity::class.java
+            ).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+
+        /*
+         * Overlay burada hemen kaldırılmaz. Önce Muhafız Activity gerçekten
+         * ön plana gelir; MainActivity onResume/onNewIntent üzerinden
+         * ScreenCaptureService'e güvenli ekranın görünür olduğunu bildirir.
+         * Böylece riskli içeriğin kısa süreliğine tekrar görünmesi engellenir.
+         */
+        try {
+            startActivity(intent)
+        } catch (_: Exception) {
+            // Güvenli ekran açılamazsa fail-closed: overlay açık kalır.
+        }
+    }
+
 
     private fun createLayoutParams(): WindowManager.LayoutParams {
         return WindowManager.LayoutParams(
