@@ -17,3 +17,19 @@ local.properties
 # OS files
 .DS_Store
 Thumbs.db
+
+# Android Studio local files
+.idea/
+
+# Generated release/build artifacts
+app/release/
+app/lab/
+app/production/
+*.apk
+*.aab
+*.rar
+
+# Local machine configuration
+local.properties
+*.jks
+*.keystore

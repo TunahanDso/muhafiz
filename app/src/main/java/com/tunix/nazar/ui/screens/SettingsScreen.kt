@@ -6,38 +6,89 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun SettingsScreen(
+    isDeveloperAccessEnabled: Boolean,
     onBackClick: () -> Unit,
-    onResetPinClick: () -> Unit
+    onResetPinClick: () -> Unit,
+    onDeveloperAccessSubmit: (String) -> Boolean,
+    onDeveloperAccessDisable: () -> Unit
 ) {
-    /*
-     * Ayarlar ekranı:
-     * - Muhafız'ın nasıl çalıştığını kullanıcıya açıklar.
-     * - Ebeveyn PIN sıfırlama işlemini sunar.
-     *
-     * Not:
-     * Bu ekran şu an sade tutuldu. İleride hassasiyet seviyesi,
-     * analiz sıklığı veya raporlama ayarları buraya eklenebilir.
-     */
+    val scrollState = rememberScrollState()
+
+    var showDeveloperAccessInput by rememberSaveable {
+        mutableStateOf(false)
+    }
+
+    var developerAccessCode by rememberSaveable {
+        mutableStateOf("")
+    }
+
+    var developerAccessMessage by rememberSaveable {
+        mutableStateOf<String?>(null)
+    }
+
+    var developerAccessError by rememberSaveable {
+        mutableStateOf(false)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(ScreenPadding),
-        verticalArrangement = Arrangement.Center,
+
+            /*
+             * Ayarlar ekranındaki içerik ekran yüksekliğini aşarsa
+             * kullanıcı yukarı/aşağı kaydırabilir.
+             */
+            .verticalScroll(scrollState)
+
+            /*
+             * Erişim kodu klavyesi açıldığında textbox ve butonların
+             * klavyenin altında kalmasını engeller.
+             */
+            .imePadding()
+
+            /*
+             * Alt navigation bar ile içerik arasında güvenli boşluk.
+             */
+            .navigationBarsPadding()
+
+            .padding(
+                horizontal = ScreenPadding,
+                vertical = VerticalScreenPadding
+            ),
+
+        /*
+         * Artık Center kullanmıyoruz.
+         * İçerik yukarıdan başlayacak ve gerektiğinde scroll olacak.
+         */
+        verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
@@ -48,6 +99,11 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(TitleGap))
 
+        /*
+         * ---------------------------------------------------------
+         * KORUMA BİLGİSİ
+         * ---------------------------------------------------------
+         */
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(CardCornerRadius)
@@ -65,14 +121,17 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(SmallGap))
 
                 Text(
-                    text = "Muhafız, ekran içeriğini kullanıcı izniyle analiz eder. Pornografik veya +18 içerik riski algılandığında ekranı siyah koruma ekranıyla gizler.",
+                    text = "Muhafız, ekran içeriğini kullanıcı izniyle analiz eder. " +
+                            "Pornografik veya +18 içerik riski algılandığında ekranı " +
+                            "siyah koruma ekranıyla gizler.",
                     style = MaterialTheme.typography.bodyMedium
                 )
 
                 Spacer(modifier = Modifier.height(ParagraphGap))
 
                 Text(
-                    text = "Uygulama çalışırken bildirim alanında görünür ve koruma arka planda aktif kalır.",
+                    text = "Uygulama çalışırken bildirim alanında görünür ve " +
+                            "koruma arka planda aktif kalır.",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -80,6 +139,11 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(CardGap))
 
+        /*
+         * ---------------------------------------------------------
+         * EBEVEYN KİLİDİ
+         * ---------------------------------------------------------
+         */
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(CardCornerRadius)
@@ -97,7 +161,8 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(SmallGap))
 
                 Text(
-                    text = "PIN sıfırlama işlemi mevcut ebeveyn kilidini kaldırır. Bu işlemden sonra yeni bir PIN oluşturulması gerekir.",
+                    text = "PIN sıfırlama işlemi mevcut ebeveyn kilidini kaldırır. " +
+                            "Bu işlemden sonra yeni bir PIN oluşturulması gerekir.",
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Start
                 )
@@ -115,16 +180,189 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(CardGap))
 
+        /*
+         * ---------------------------------------------------------
+         * GELİŞTİRİCİ / GOOGLE PLAY İNCELEME ERİŞİMİ
+         * ---------------------------------------------------------
+         */
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(CardCornerRadius)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(CardPadding)
+            ) {
+                Text(
+                    text = "Geliştirici erişimi",
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                Spacer(modifier = Modifier.height(SmallGap))
+
+                if (isDeveloperAccessEnabled) {
+                    Text(
+                        text = "Geliştirici / inceleme erişimi aktif. " +
+                                "Koruma özellikleri aktif abonelik olmadan kullanılabilir.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+
+                    Spacer(modifier = Modifier.height(ButtonGap))
+
+                    OutlinedButton(
+                        onClick = {
+                            onDeveloperAccessDisable()
+
+                            developerAccessCode = ""
+                            developerAccessMessage = null
+                            developerAccessError = false
+                            showDeveloperAccessInput = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Geliştirici Erişimini Kapat")
+                    }
+                } else {
+                    Text(
+                        text = "Bu alan yalnızca yetkili geliştirici ve uygulama " +
+                                "inceleme erişimi içindir.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+
+                    Spacer(modifier = Modifier.height(ButtonGap))
+
+                    if (!showDeveloperAccessInput) {
+                        OutlinedButton(
+                            onClick = {
+                                showDeveloperAccessInput = true
+                                developerAccessMessage = null
+                                developerAccessError = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Geliştirici Erişimini Aç")
+                        }
+                    } else {
+                        OutlinedTextField(
+                            value = developerAccessCode,
+
+                            onValueChange = { newValue ->
+                                developerAccessCode = newValue
+                                developerAccessMessage = null
+                                developerAccessError = false
+                            },
+
+                            modifier = Modifier.fillMaxWidth(),
+
+                            label = {
+                                Text("Erişim kodu")
+                            },
+
+                            singleLine = true,
+
+                            visualTransformation =
+                            PasswordVisualTransformation(),
+
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Password,
+                                imeAction = ImeAction.Done
+                            ),
+
+                            isError = developerAccessError,
+
+                            supportingText = {
+                                developerAccessMessage?.let { message ->
+                                    Text(message)
+                                }
+                            }
+                        )
+
+                        Spacer(modifier = Modifier.height(ButtonGap))
+
+                        Button(
+                            onClick = {
+                                val code =
+                                    developerAccessCode.trim()
+
+                                if (code.isBlank()) {
+                                    developerAccessError = true
+                                    developerAccessMessage =
+                                        "Geliştirici erişim kodunu girin."
+
+                                    return@Button
+                                }
+
+                                val accessGranted =
+                                    onDeveloperAccessSubmit(code)
+
+                                if (accessGranted) {
+                                    developerAccessError = false
+
+                                    developerAccessMessage =
+                                        "Geliştirici erişimi etkinleştirildi."
+
+                                    developerAccessCode = ""
+                                    showDeveloperAccessInput = false
+                                } else {
+                                    developerAccessError = true
+
+                                    developerAccessMessage =
+                                        "Erişim kodu geçersiz."
+                                }
+                            },
+
+                            enabled =
+                            developerAccessCode.isNotBlank(),
+
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Erişimi Doğrula")
+                        }
+
+                        Spacer(modifier = Modifier.height(SmallGap))
+
+                        OutlinedButton(
+                            onClick = {
+                                developerAccessCode = ""
+                                developerAccessMessage = null
+                                developerAccessError = false
+                                showDeveloperAccessInput = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("İptal")
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(CardGap))
+
+        /*
+         * ---------------------------------------------------------
+         * GERİ DÖN
+         * ---------------------------------------------------------
+         */
         OutlinedButton(
             onClick = onBackClick,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Geri Dön")
         }
+
+        /*
+         * En alttaki butonun navigation bar'a yapışmaması için
+         * ekstra boşluk.
+         */
+        Spacer(modifier = Modifier.height(BottomGap))
     }
 }
 
 private val ScreenPadding = 24.dp
+private val VerticalScreenPadding = 24.dp
+
 private val CardPadding = 20.dp
 private val CardCornerRadius = 20.dp
 
@@ -133,3 +371,4 @@ private val SmallGap = 10.dp
 private val ParagraphGap = 8.dp
 private val CardGap = 16.dp
 private val ButtonGap = 16.dp
+private val BottomGap = 24.dp

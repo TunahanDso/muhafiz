@@ -24,12 +24,22 @@ fun HomeScreen(
     hasPin: Boolean,
     isProtectionRunning: Boolean,
     isSubscribed: Boolean,
+    hasDeveloperAccess: Boolean,
     isBillingReady: Boolean,
     onSetupPinClick: () -> Unit,
     onProtectionToggleClick: () -> Unit,
     onSubscribeClick: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
+    /*
+     * Normal kullanıcı:
+     *      Aktif abonelik gerekli.
+     *
+     * Google Play inceleme / geliştirici erişimi:
+     *      Abonelik olmadan koruma kullanılabilir.
+     */
+    val hasProtectionAccess = isSubscribed || hasDeveloperAccess
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -63,7 +73,9 @@ fun HomeScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Muhafız, ekrandaki görüntüyü kullanıcı izniyle analiz eder. Pornografik veya +18 içerik riski algılandığında ekranı siyah koruma ekranıyla gizler.",
+                    text = "Muhafız, ekrandaki görüntüyü kullanıcı izniyle analiz eder. " +
+                            "Pornografik veya +18 içerik riski algılandığında ekranı " +
+                            "siyah koruma ekranıyla gizler.",
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center
                 )
@@ -72,9 +84,20 @@ fun HomeScreen(
 
                 Text(
                     text = when {
-                        !isSubscribed -> "Muhafız korumasını kullanmak için aktif aylık abonelik gereklidir."
-                        isProtectionRunning -> "Abonelik aktif. Koruma şu anda çalışıyor ve Muhafız bildirim alanında görünür."
-                        else -> "Abonelik aktif. Koruma başlatıldığında Muhafız bildirim alanında görünür ve arka planda çalışır."
+                        hasDeveloperAccess && isProtectionRunning ->
+                            "İnceleme erişimi aktif. Koruma şu anda çalışıyor ve Muhafız bildirim alanında görünür."
+
+                        hasDeveloperAccess ->
+                            "İnceleme erişimi aktif. Koruma abonelik gerektirmeden test edilebilir."
+
+                        !isSubscribed ->
+                            "Muhafız korumasını kullanmak için aktif aylık abonelik gereklidir."
+
+                        isProtectionRunning ->
+                            "Abonelik aktif. Koruma şu anda çalışıyor ve Muhafız bildirim alanında görünür."
+
+                        else ->
+                            "Abonelik aktif. Koruma başlatıldığında Muhafız bildirim alanında görünür ve arka planda çalışır."
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center
@@ -83,7 +106,9 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(MediumGap))
 
                 Text(
-                    text = "Telefon yeniden başlatıldığında korumayı tekrar başlatmayı ve çocuğunuz cihazı kullanırken korumanın aktif olduğunu kontrol etmeyi unutmayın.",
+                    text = "Telefon yeniden başlatıldığında korumayı tekrar başlatmayı " +
+                            "ve çocuğunuz cihazı kullanırken korumanın aktif olduğunu " +
+                            "kontrol etmeyi unutmayın.",
                     style = MaterialTheme.typography.bodySmall,
                     textAlign = TextAlign.Center
                 )
@@ -100,14 +125,20 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(ActionGap))
 
-        if (!isSubscribed) {
+        if (!hasProtectionAccess) {
+            /*
+             * Normal ödeme duvarı.
+             *
+             * Kullanıcının aboneliği veya geliştirici erişimi yoksa
+             * koruma kontrollerini göstermiyoruz.
+             */
             Button(
                 onClick = onSubscribeClick,
                 enabled = isBillingReady,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    if (isBillingReady) {
+                    text = if (isBillingReady) {
                         "Aylık Abonelik Başlat"
                     } else {
                         "Abonelik Sistemi Hazırlanıyor"
@@ -124,6 +155,11 @@ fun HomeScreen(
                 Text("Ayarlar")
             }
         } else {
+            /*
+             * Aktif abonelik VEYA geliştirici erişimi mevcut.
+             *
+             * Buradan sonrası her iki erişim türünde de tamamen aynıdır.
+             */
             if (!hasPin) {
                 Button(
                     onClick = onSetupPinClick,
@@ -131,13 +167,22 @@ fun HomeScreen(
                 ) {
                     Text("Ebeveyn PIN'i Oluştur")
                 }
+
+                Spacer(modifier = Modifier.height(MediumGap))
+
+                OutlinedButton(
+                    onClick = onSettingsClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Ayarlar")
+                }
             } else {
                 Button(
                     onClick = onProtectionToggleClick,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        if (isProtectionRunning) {
+                        text = if (isProtectionRunning) {
                             "Korumayı Durdur"
                         } else {
                             "Koruma Başlat"

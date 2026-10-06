@@ -1,10 +1,14 @@
 package com.tunix.nazar.service
 
+import android.app.KeyguardManager
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -19,16 +23,27 @@ class OverlayService : Service() {
     private var overlayLayoutParams: WindowManager.LayoutParams? = null
     private var isOverlayAttached: Boolean = false
 
+    private var keyguardManager: KeyguardManager? = null
+    private var powerManager: PowerManager? = null
+
     override fun onCreate() {
         super.onCreate()
+
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val showOverlay = intent?.getBooleanExtra(EXTRA_SHOW_OVERLAY, true) ?: false
 
         if (showOverlay) {
-            showOverlay()
+            if (isDeviceLockedOrScreenInactive()) {
+                hideOverlay()
+                stopSelf()
+            } else {
+                showOverlay()
+            }
         } else {
             hideOverlay()
             stopSelf()
@@ -41,12 +56,19 @@ class OverlayService : Service() {
         hideOverlay()
         overlayLayoutParams = null
         windowManager = null
+        keyguardManager = null
+        powerManager = null
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun showOverlay() {
+        if (isDeviceLockedOrScreenInactive()) {
+            hideOverlay()
+            return
+        }
+
         val wm = windowManager ?: return
 
         val view = overlayView ?: createOverlayView().also {
@@ -108,6 +130,27 @@ class OverlayService : Service() {
     private fun resetOverlayState() {
         isOverlayAttached = false
         overlayView = null
+    }
+
+    private fun isDeviceLockedOrScreenInactive(): Boolean {
+        val pm = powerManager
+        val km = keyguardManager
+
+        val screenInactive = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
+            pm?.isInteractive == false
+        } else {
+            @Suppress("DEPRECATION")
+            pm?.isScreenOn == false
+        }
+
+        val keyguardLocked = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+            km?.isKeyguardLocked == true
+        } else {
+            @Suppress("DEPRECATION")
+            km?.inKeyguardRestrictedInputMode() == true
+        }
+
+        return screenInactive || keyguardLocked
     }
 
     private fun createOverlayView(): View {

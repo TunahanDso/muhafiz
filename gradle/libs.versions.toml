@@ -1,30 +1,157 @@
 [versions]
-agp = "8.4.0"
-kotlin = "1.9.0"
-coreKtx = "1.13.1"
+
+# -------------------------------------------------------------
+# BUILD TOOLCHAIN
+# -------------------------------------------------------------
+
+agp = "8.13.2"
+kotlin = "2.3.21"
+
+
+# -------------------------------------------------------------
+# ANDROIDX
+# -------------------------------------------------------------
+#
+# API 36 / AGP 8.13.2 hatti korunuyor.
+#
+# core-ktx 1.19.x API 37 / daha yeni AGP hattina gectigi icin
+# burada 1.17.0 kullaniliyor.
+#
+# lifecycle-runtime-ktx 2.10.0
+# activity-compose 1.13.0
+#
+# Fragment 1.9.1:
+# Activity Result API kullanan ComponentActivity icin release
+# lint'in bekledigi Fragment altyapisini guncel ve uyumlu tutar.
+#
+# -------------------------------------------------------------
+
+coreKtx = "1.17.0"
+lifecycleRuntimeKtx = "2.10.0"
+activityCompose = "1.13.0"
+fragment = "1.9.1"
+
+
+# -------------------------------------------------------------
+# TEST
+# -------------------------------------------------------------
+
 junit = "4.13.2"
-junitVersion = "1.2.1"
-espressoCore = "3.6.1"
-lifecycleRuntimeKtx = "2.8.7"
-activityCompose = "1.9.3"
-composeBom = "2023.08.00"
+junitVersion = "1.3.0"
+espressoCore = "3.7.0"
+
+
+# -------------------------------------------------------------
+# JETPACK COMPOSE
+# -------------------------------------------------------------
+#
+# 2026.09.00 BOM Compose 1.12.x hattini getiriyor.
+# Bu hat compileSdk 37 / daha yeni AGP gerektirebildigi icin
+# mevcut API 36 release zincirinde kullanilmiyor.
+#
+# API 36 release hatti icin:
+# Compose BOM 2026.06.00
+#
+# -------------------------------------------------------------
+
+composeBom = "2026.06.00"
+
 
 [libraries]
+
+# -------------------------------------------------------------
+# ANDROIDX CORE
+# -------------------------------------------------------------
+
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
-junit = { group = "junit", name = "junit", version.ref = "junit" }
-androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
-androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
+
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+
+
+# -------------------------------------------------------------
+# ANDROIDX FRAGMENT
+# -------------------------------------------------------------
+#
+# Muhafiz Fragment tabanli bir UI kullanmiyor.
+#
+# Ancak Activity Result API'nin release lint kontrolu,
+# classpath'teki Fragment altyapisinin modern bir surumde
+# olmasini bekliyor.
+#
+# fragment-ktx eklemiyoruz; yalnizca temel fragment artefact'i
+# yeterli.
+#
+# -------------------------------------------------------------
+
+androidx-fragment = { group = "androidx.fragment", name = "fragment", version.ref = "fragment" }
+
+
+# -------------------------------------------------------------
+# JETPACK COMPOSE BOM
+# -------------------------------------------------------------
+
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+
+
+# -------------------------------------------------------------
+# COMPOSE UI
+# -------------------------------------------------------------
+#
+# Surumler Compose BOM tarafindan yonetilir.
+# Bu dependency'lere tek tek version verilmez.
+#
+# -------------------------------------------------------------
+
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
+
 androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+
 androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+
 androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+
+
+# -------------------------------------------------------------
+# MATERIAL 3
+# -------------------------------------------------------------
+#
+# Surum Compose BOM tarafindan belirlenir.
+#
+# -------------------------------------------------------------
+
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 
+
+# -------------------------------------------------------------
+# TEST LIBRARIES
+# -------------------------------------------------------------
+
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+
+androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
+
+androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+
+
 [plugins]
+
+# -------------------------------------------------------------
+# ANDROID GRADLE PLUGIN
+# -------------------------------------------------------------
+
 android-application = { id = "com.android.application", version.ref = "agp" }
+
+
+# -------------------------------------------------------------
+# KOTLIN
+# -------------------------------------------------------------
+
 jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+
+jetbrains-kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
