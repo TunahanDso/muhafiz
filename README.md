@@ -42,8 +42,10 @@ Kullanılan temel teknolojiler:
 - MediaProjection API
 - Overlay Window System
 - TensorFlow Lite
-- Google Play Billing
+- Google Play Billing 9.1.0
 - DataStore Preferences
+
+Release hattı Android 16 / API 36 hedefiyle yapılandırılmıştır.
 
 ---
 
@@ -54,6 +56,7 @@ Muhafız’ın temel işlevlerini yerine getirebilmesi için bazı Android izinl
 - **MediaProjection:** Ekrandaki içeriğin analiz edilebilmesi için kullanılır.
 - **SYSTEM_ALERT_WINDOW:** Riskli içerik algılandığında ekran üzerinde koruma katmanı oluşturmak için kullanılır.
 - **POST_NOTIFICATIONS:** Arka planda çalışan koruma servisinin kullanıcıya görünür olması için kullanılır.
+- **Cihaz yöneticisi:** Ebeveyn korumasının yetkisiz biçimde kolayca devre dışı bırakılmasını veya kaldırılmasını zorlaştırmak amacıyla kullanılır. Muhafız force-lock, wipe-data veya parola değiştirme politikası kullanmaz.
 
 Tüm analiz işlemleri cihaz üzerinde gerçekleştirilir. Ekran verileri kaydedilmez, dışarı aktarılmaz veya üçüncü taraflarla paylaşılmaz.
 
@@ -77,8 +80,11 @@ Muhafız
 **Kod tarafındaki package/namespace:**  
 com.tunix.nazar
 
-**Play Store applicationId:**  
-com.tunix.muhafiz
+**Play Store production applicationId:**  
+com.tunix.muhafiz.guard
+
+**Lab/test applicationId:**  
+com.tunix.muhafiz.guard.test
 
 ---
 
