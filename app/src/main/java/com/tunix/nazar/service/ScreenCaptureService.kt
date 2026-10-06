@@ -2,6 +2,7 @@ package com.tunix.nazar.service
 
 import android.app.Activity
 import android.app.KeyguardManager
+import android.app.PendingIntent
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -15,6 +16,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import com.tunix.nazar.MainActivity
 import com.tunix.nazar.R
 import com.tunix.nazar.ml.BinaryNsfwInterpreter
 import com.tunix.nazar.ml.BinaryNsfwResult
@@ -139,6 +141,25 @@ class ScreenCaptureService : Service() {
         flags: Int,
         startId: Int
     ): Int {
+
+        /*
+         * Muhafız'ın kendi güvenli ekranı görünür olduğunda overlay'i
+         * kontrollü biçimde kaldırırız. Bu komut yeni MediaProjection
+         * oturumu başlatmaz; mevcut koruma servisi çalışmaya devam eder.
+         */
+        if (intent?.action == ACTION_SAFE_SCREEN_VISIBLE) {
+            if (serviceRunning.get()) {
+                hideOverlay(force = true)
+                resetDetectionState()
+
+                updateUserNotification(
+                    title = "Muhafız koruması aktif",
+                    text = "Güvenli ekran açık; koruma izlemeye devam ediyor"
+                )
+            }
+
+            return START_NOT_STICKY
+        }
 
         /*
          * MediaProjection izin Intent'i Android 14+ üzerinde tek
@@ -1645,10 +1666,36 @@ class ScreenCaptureService : Service() {
                 NotificationCompat.BigTextStyle()
                     .bigText(text)
             )
+            .setContentIntent(
+                createOpenAppPendingIntent()
+            )
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()
     }
+
+    private fun createOpenAppPendingIntent(): PendingIntent {
+        val intent =
+            Intent(
+                this,
+                MainActivity::class.java
+            ).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+
+        return PendingIntent.getActivity(
+            this,
+            REQUEST_CODE_OPEN_APP,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                    PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
 
     private fun updateUserNotification(
         title: String,
@@ -1805,6 +1852,9 @@ class ScreenCaptureService : Service() {
         const val ACTION_PROTECTION_STATE_CHANGED =
             "com.tunix.nazar.action.PROTECTION_STATE_CHANGED"
 
+        const val ACTION_SAFE_SCREEN_VISIBLE =
+            "com.tunix.nazar.action.SAFE_SCREEN_VISIBLE"
+
         const val EXTRA_PROTECTION_RUNNING =
             "extra_protection_running"
 
@@ -1836,6 +1886,9 @@ class ScreenCaptureService : Service() {
 
         private const val NOTIFICATION_ID =
             1001
+
+        private const val REQUEST_CODE_OPEN_APP =
+            1002
 
         private const val MAX_NOTIFICATION_TEXT_LENGTH =
             120
