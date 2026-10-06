@@ -480,14 +480,9 @@ class BillingManager(
                 }
 
                 if (
-                    billingResult.responseCode ==
+                    billingResult.responseCode !=
                     BillingClient.BillingResponseCode.OK
                 ) {
-                    AcknowledgePurchaseWorker.cancel(
-                        context = appContext,
-                        purchaseToken = purchase.purchaseToken
-                    )
-                } else {
                     dispatchSubscriptionPrice(null)
 
                     Log.w(
@@ -1319,14 +1314,18 @@ class BillingManager(
                 )
 
                 if (
-                    billingResult.responseCode !=
+                    billingResult.responseCode ==
                     BillingClient.BillingResponseCode.OK
                 ) {
+                    AcknowledgePurchaseWorker.cancel(
+                        context = appContext,
+                        purchaseToken = purchase.purchaseToken
+                    )
+                } else {
                     /*
-                     * Hak hemen kapatılmaz.
-                     *
-                     * Bir sonraki refresh/query sırasında acknowledge
-                     * yeniden denenebilir.
+                     * Kalıcı WorkManager retry zaten planlandı.
+                     * Hak hemen kapatılmaz; geçici hata arka planda
+                     * tekrar denenir.
                      */
                     Log.e(
                         TAG,
