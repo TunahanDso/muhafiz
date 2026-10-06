@@ -374,6 +374,19 @@ dependencies {
 
     /*
      * =============================================================
+     * RELIABLE BACKGROUND WORK
+     * =============================================================
+     *
+     * Purchase acknowledgement retry, Activity/process yaşam
+     * döngüsünden bağımsız olarak WorkManager ile kalıcılaştırılır.
+     */
+    implementation(
+        "androidx.work:work-runtime:2.11.2"
+    )
+
+
+    /*
+     * =============================================================
      * GOOGLE PLAY BILLING
      * =============================================================
      *

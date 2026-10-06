@@ -447,6 +447,10 @@ class MainActivity : ComponentActivity() {
                     subscriptionPrice =
                         subscriptionPriceState.value,
 
+                    onRetrySubscriptionInfoClick = {
+                        billingManager.refreshPurchases()
+                    },
+
 
                     /*
                      * -------------------------------------------------
@@ -1084,6 +1088,7 @@ private fun MuhafizApp(
     isBillingReady: Boolean,
     subscriptionPrice: String?,
 
+    onRetrySubscriptionInfoClick: () -> Unit,
     onSubscribeClick: () -> Unit,
     onManageSubscriptionClick: () -> Unit,
     onPrivacyPolicyClick: () -> Unit,
@@ -1201,6 +1206,9 @@ private fun MuhafizApp(
 
                 subscriptionPrice =
                     subscriptionPrice,
+
+                onRetrySubscriptionInfoClick =
+                    onRetrySubscriptionInfoClick,
 
 
                 /*
