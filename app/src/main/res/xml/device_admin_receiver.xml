@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <device-admin xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-policies>
-        <force-lock />
-    </uses-policies>
+    <!--
+        Muhafız Device Admin'ı yalnızca ebeveyn korumasının kolayca
+        devre dışı bırakılmasını/kaldırılmasını zorlaştırmak için kullanır.
+        Uygulama force-lock, wipe-data veya parola değiştirme politikası kullanmaz.
+    -->
+    <uses-policies />
 </device-admin>

@@ -89,6 +89,9 @@ class MainActivity : ComponentActivity() {
     private val isBillingReadyState =
         mutableStateOf(false)
 
+    private val subscriptionPriceState =
+        mutableStateOf<String?>(null)
+
     /*
      * Abonelik durumunun en az bir kez başarıyla sorgulanıp
      * sorgulanmadığını ayırıyoruz.
@@ -380,6 +383,12 @@ class MainActivity : ComponentActivity() {
                         isReady
                 },
 
+                onSubscriptionPriceChanged = { formattedPrice ->
+
+                    subscriptionPriceState.value =
+                        formattedPrice
+                },
+
                 /*
                  * BillingManager'daki hiçbir önemli hata artık
                  * kullanıcıdan gizlenmez.
@@ -435,6 +444,9 @@ class MainActivity : ComponentActivity() {
                     isBillingReady =
                         isBillingReadyState.value,
 
+                    subscriptionPrice =
+                        subscriptionPriceState.value,
+
 
                     /*
                      * -------------------------------------------------
@@ -450,6 +462,14 @@ class MainActivity : ComponentActivity() {
                          * ardından devam ettirir.
                          */
                         billingManager.purchase(this)
+                    },
+
+                    onManageSubscriptionClick = {
+                        openSubscriptionManagement()
+                    },
+
+                    onPrivacyPolicyClick = {
+                        openPrivacyPolicy()
                     },
 
 
@@ -981,6 +1001,44 @@ class MainActivity : ComponentActivity() {
      * =============================================================
      */
 
+    private fun openSubscriptionManagement() {
+        val url =
+            "https://play.google.com/store/account/subscriptions" +
+                    "?sku=muhafiz_monthly&package=$packageName"
+
+        try {
+            startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse(url)
+                )
+            )
+        } catch (_: Exception) {
+            showToast(
+                message = "Google Play abonelik yönetimi açılamadı.",
+                long = true
+            )
+        }
+    }
+
+
+    private fun openPrivacyPolicy() {
+        try {
+            startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse(PRIVACY_POLICY_URL)
+                )
+            )
+        } catch (_: Exception) {
+            showToast(
+                message = "Gizlilik politikası açılamadı.",
+                long = true
+            )
+        }
+    }
+
+
     private fun showToast(
         message: String,
         long: Boolean = false
@@ -1024,8 +1082,11 @@ private fun MuhafizApp(
     isSubscribed: Boolean,
     hasDeveloperAccess: Boolean,
     isBillingReady: Boolean,
+    subscriptionPrice: String?,
 
     onSubscribeClick: () -> Unit,
+    onManageSubscriptionClick: () -> Unit,
+    onPrivacyPolicyClick: () -> Unit,
     onShowMessage: (String) -> Unit,
 
     onRequestProtectionStart: () -> Unit,
@@ -1064,6 +1125,10 @@ private fun MuhafizApp(
     }
 
     var showResetPinDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var showScreenAnalysisDisclosure by remember {
         mutableStateOf(false)
     }
 
@@ -1134,6 +1199,9 @@ private fun MuhafizApp(
                 isBillingReady =
                     isBillingReady,
 
+                subscriptionPrice =
+                    subscriptionPrice,
+
 
                 /*
                  * PIN kurulumu.
@@ -1152,7 +1220,8 @@ private fun MuhafizApp(
 
                     if (!isProtectionRunning) {
 
-                        onRequestProtectionStart()
+                        showScreenAnalysisDisclosure =
+                            true
 
                     } else {
 
@@ -1178,6 +1247,46 @@ private fun MuhafizApp(
                         true
                 }
             )
+
+
+            if (showScreenAnalysisDisclosure) {
+
+                AlertDialog(
+                    onDismissRequest = {
+                        showScreenAnalysisDisclosure = false
+                    },
+                    title = {
+                        Text("Ekran Analizi Hakkında")
+                    },
+                    text = {
+                        Text(
+                            "Muhafız, koruma açıkken ekranda görüntülenen içeriği analiz eder. " +
+                                    "Ekran görüntüleri yalnızca cihaz üzerinde anlık olarak işlenir; " +
+                                    "kaydedilmez, sunucuya gönderilmez ve üçüncü taraflarla paylaşılmaz. " +
+                                    "Korumanın çalışması için ekran yakalama ve ekran üzerinde gösterim izinleri gerekir."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showScreenAnalysisDisclosure = false
+                                onRequestProtectionStart()
+                            }
+                        ) {
+                            Text("Anladım ve Devam Et")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                showScreenAnalysisDisclosure = false
+                            }
+                        ) {
+                            Text("Vazgeç")
+                        }
+                    }
+                )
+            }
 
 
             /*
@@ -1306,6 +1415,12 @@ private fun MuhafizApp(
                     showResetPinDialog =
                         true
                 },
+
+                onManageSubscriptionClick =
+                    onManageSubscriptionClick,
+
+                onPrivacyPolicyClick =
+                    onPrivacyPolicyClick,
 
 
                 onDeveloperAccessSubmit =
@@ -1595,3 +1710,6 @@ private const val MIN_PIN_LENGTH =
 
 private const val MAX_PIN_LENGTH =
     6
+
+private const val PRIVACY_POLICY_URL =
+    "https://tunahandso.github.io/muhafiz/"

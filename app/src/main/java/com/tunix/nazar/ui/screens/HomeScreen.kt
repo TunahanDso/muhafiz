@@ -6,8 +6,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
@@ -26,23 +29,20 @@ fun HomeScreen(
     isSubscribed: Boolean,
     hasDeveloperAccess: Boolean,
     isBillingReady: Boolean,
+    subscriptionPrice: String?,
     onSetupPinClick: () -> Unit,
     onProtectionToggleClick: () -> Unit,
     onSubscribeClick: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
-    /*
-     * Normal kullanıcı:
-     *      Aktif abonelik gerekli.
-     *
-     * Google Play inceleme / geliştirici erişimi:
-     *      Abonelik olmadan koruma kullanılabilir.
-     */
-    val hasProtectionAccess = isSubscribed || hasDeveloperAccess
+    val hasProtectionAccess =
+        isSubscribed || hasDeveloperAccess
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
             .padding(ScreenPadding),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
@@ -86,16 +86,12 @@ fun HomeScreen(
                     text = when {
                         hasDeveloperAccess && isProtectionRunning ->
                             "İnceleme erişimi aktif. Koruma şu anda çalışıyor ve Muhafız bildirim alanında görünür."
-
                         hasDeveloperAccess ->
                             "İnceleme erişimi aktif. Koruma abonelik gerektirmeden test edilebilir."
-
                         !isSubscribed ->
                             "Muhafız korumasını kullanmak için aktif aylık abonelik gereklidir."
-
                         isProtectionRunning ->
                             "Abonelik aktif. Koruma şu anda çalışıyor ve Muhafız bildirim alanında görünür."
-
                         else ->
                             "Abonelik aktif. Koruma başlatıldığında Muhafız bildirim alanında görünür ve arka planda çalışır."
                     },
@@ -126,12 +122,50 @@ fun HomeScreen(
         Spacer(modifier = Modifier.height(ActionGap))
 
         if (!hasProtectionAccess) {
-            /*
-             * Normal ödeme duvarı.
-             *
-             * Kullanıcının aboneliği veya geliştirici erişimi yoksa
-             * koruma kontrollerini göstermiyoruz.
-             */
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(CardCornerRadius)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(CardPadding),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Muhafız Aylık",
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(SmallGap))
+
+                    Text(
+                        text = subscriptionPrice?.let { price ->
+                            "$price / ay"
+                        } ?: if (isBillingReady) {
+                            "Fiyat bilgisi Google Play'den alınıyor."
+                        } else {
+                            "Google Play abonelik sistemi hazırlanıyor."
+                        },
+                        style = MaterialTheme.typography.titleLarge,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(SmallGap))
+
+                    Text(
+                        text = "Abonelik her ay otomatik yenilenir. " +
+                                "İstediğiniz zaman Google Play üzerinden yönetebilir veya iptal edebilirsiniz. " +
+                                "Koruma özelliğini kullanmak için aktif abonelik gerekir.",
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(MediumGap))
+
             Button(
                 onClick = onSubscribeClick,
                 enabled = isBillingReady,
@@ -155,11 +189,6 @@ fun HomeScreen(
                 Text("Ayarlar")
             }
         } else {
-            /*
-             * Aktif abonelik VEYA geliştirici erişimi mevcut.
-             *
-             * Buradan sonrası her iki erişim türünde de tamamen aynıdır.
-             */
             if (!hasPin) {
                 Button(
                     onClick = onSetupPinClick,
@@ -200,14 +229,16 @@ fun HomeScreen(
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(BottomGap))
     }
 }
 
 private val ScreenPadding = 24.dp
 private val CardPadding = 20.dp
 private val CardCornerRadius = 20.dp
-
 private val SmallGap = 10.dp
 private val MediumGap = 12.dp
 private val LargeGap = 24.dp
 private val ActionGap = 28.dp
+private val BottomGap = 24.dp

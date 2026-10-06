@@ -37,57 +37,27 @@ fun SettingsScreen(
     isDeveloperAccessEnabled: Boolean,
     onBackClick: () -> Unit,
     onResetPinClick: () -> Unit,
+    onManageSubscriptionClick: () -> Unit,
+    onPrivacyPolicyClick: () -> Unit,
     onDeveloperAccessSubmit: (String) -> Boolean,
     onDeveloperAccessDisable: () -> Unit
 ) {
     val scrollState = rememberScrollState()
-
-    var showDeveloperAccessInput by rememberSaveable {
-        mutableStateOf(false)
-    }
-
-    var developerAccessCode by rememberSaveable {
-        mutableStateOf("")
-    }
-
-    var developerAccessMessage by rememberSaveable {
-        mutableStateOf<String?>(null)
-    }
-
-    var developerAccessError by rememberSaveable {
-        mutableStateOf(false)
-    }
+    var showDeveloperAccessInput by rememberSaveable { mutableStateOf(false) }
+    var developerAccessCode by rememberSaveable { mutableStateOf("") }
+    var developerAccessMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var developerAccessError by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-
-            /*
-             * Ayarlar ekranındaki içerik ekran yüksekliğini aşarsa
-             * kullanıcı yukarı/aşağı kaydırabilir.
-             */
             .verticalScroll(scrollState)
-
-            /*
-             * Erişim kodu klavyesi açıldığında textbox ve butonların
-             * klavyenin altında kalmasını engeller.
-             */
             .imePadding()
-
-            /*
-             * Alt navigation bar ile içerik arasında güvenli boşluk.
-             */
             .navigationBarsPadding()
-
             .padding(
                 horizontal = ScreenPadding,
                 vertical = VerticalScreenPadding
             ),
-
-        /*
-         * Artık Center kullanmıyoruz.
-         * İçerik yukarıdan başlayacak ve gerektiğinde scroll olacak.
-         */
         verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -99,11 +69,15 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(TitleGap))
 
-        /*
-         * ---------------------------------------------------------
-         * KORUMA BİLGİSİ
-         * ---------------------------------------------------------
-         */
+        InfoCard(
+            title = "Koruma bilgisi",
+            body = "Muhafız, ekran içeriğini kullanıcı izniyle analiz eder. " +
+                    "Ekran görüntüleri yalnızca cihaz üzerinde anlık olarak işlenir; " +
+                    "kaydedilmez, sunucuya gönderilmez ve üçüncü taraflarla paylaşılmaz."
+        )
+
+        Spacer(modifier = Modifier.height(CardGap))
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(CardCornerRadius)
@@ -113,37 +87,25 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .padding(CardPadding)
             ) {
-                Text(
-                    text = "Koruma bilgisi",
-                    style = MaterialTheme.typography.titleMedium
-                )
-
+                Text("Abonelik", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(SmallGap))
-
                 Text(
-                    text = "Muhafız, ekran içeriğini kullanıcı izniyle analiz eder. " +
-                            "Pornografik veya +18 içerik riski algılandığında ekranı " +
-                            "siyah koruma ekranıyla gizler.",
+                    text = "Aylık abonelik otomatik olarak yenilenir. " +
+                            "Aboneliğinizi Google Play üzerinden yönetebilir veya iptal edebilirsiniz.",
                     style = MaterialTheme.typography.bodyMedium
                 )
-
-                Spacer(modifier = Modifier.height(ParagraphGap))
-
-                Text(
-                    text = "Uygulama çalışırken bildirim alanında görünür ve " +
-                            "koruma arka planda aktif kalır.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                Spacer(modifier = Modifier.height(ButtonGap))
+                OutlinedButton(
+                    onClick = onManageSubscriptionClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Aboneliği Yönet / İptal Et")
+                }
             }
         }
 
         Spacer(modifier = Modifier.height(CardGap))
 
-        /*
-         * ---------------------------------------------------------
-         * EBEVEYN KİLİDİ
-         * ---------------------------------------------------------
-         */
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(CardCornerRadius)
@@ -153,22 +115,42 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .padding(CardPadding)
             ) {
-                Text(
-                    text = "Ebeveyn kilidi",
-                    style = MaterialTheme.typography.titleMedium
-                )
-
+                Text("Gizlilik", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(SmallGap))
+                Text(
+                    text = "Ekran analizi cihaz üzerinde gerçekleştirilir. " +
+                            "Gizlilik ve kullanılan izinler hakkında ayrıntılı bilgi için politikayı görüntüleyebilirsiniz.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(ButtonGap))
+                OutlinedButton(
+                    onClick = onPrivacyPolicyClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Gizlilik Politikasını Görüntüle")
+                }
+            }
+        }
 
+        Spacer(modifier = Modifier.height(CardGap))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(CardCornerRadius)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(CardPadding)
+            ) {
+                Text("Ebeveyn kilidi", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(SmallGap))
                 Text(
                     text = "PIN sıfırlama işlemi mevcut ebeveyn kilidini kaldırır. " +
                             "Bu işlemden sonra yeni bir PIN oluşturulması gerekir.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Start
+                    style = MaterialTheme.typography.bodyMedium
                 )
-
                 Spacer(modifier = Modifier.height(ButtonGap))
-
                 Button(
                     onClick = onResetPinClick,
                     modifier = Modifier.fillMaxWidth()
@@ -180,11 +162,6 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(CardGap))
 
-        /*
-         * ---------------------------------------------------------
-         * GELİŞTİRİCİ / GOOGLE PLAY İNCELEME ERİŞİMİ
-         * ---------------------------------------------------------
-         */
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(CardCornerRadius)
@@ -194,11 +171,7 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .padding(CardPadding)
             ) {
-                Text(
-                    text = "Geliştirici erişimi",
-                    style = MaterialTheme.typography.titleMedium
-                )
-
+                Text("Geliştirici erişimi", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(SmallGap))
 
                 if (isDeveloperAccessEnabled) {
@@ -207,13 +180,10 @@ fun SettingsScreen(
                                 "Koruma özellikleri aktif abonelik olmadan kullanılabilir.",
                         style = MaterialTheme.typography.bodyMedium
                     )
-
                     Spacer(modifier = Modifier.height(ButtonGap))
-
                     OutlinedButton(
                         onClick = {
                             onDeveloperAccessDisable()
-
                             developerAccessCode = ""
                             developerAccessMessage = null
                             developerAccessError = false
@@ -225,11 +195,9 @@ fun SettingsScreen(
                     }
                 } else {
                     Text(
-                        text = "Bu alan yalnızca yetkili geliştirici ve uygulama " +
-                                "inceleme erişimi içindir.",
+                        text = "Bu alan yalnızca yetkili geliştirici ve uygulama inceleme erişimi içindir.",
                         style = MaterialTheme.typography.bodyMedium
                     )
-
                     Spacer(modifier = Modifier.height(ButtonGap))
 
                     if (!showDeveloperAccessInput) {
@@ -246,82 +214,51 @@ fun SettingsScreen(
                     } else {
                         OutlinedTextField(
                             value = developerAccessCode,
-
                             onValueChange = { newValue ->
                                 developerAccessCode = newValue
                                 developerAccessMessage = null
                                 developerAccessError = false
                             },
-
                             modifier = Modifier.fillMaxWidth(),
-
-                            label = {
-                                Text("Erişim kodu")
-                            },
-
+                            label = { Text("Erişim kodu") },
                             singleLine = true,
-
-                            visualTransformation =
-                            PasswordVisualTransformation(),
-
+                            visualTransformation = PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Password,
                                 imeAction = ImeAction.Done
                             ),
-
                             isError = developerAccessError,
-
                             supportingText = {
-                                developerAccessMessage?.let { message ->
-                                    Text(message)
-                                }
+                                developerAccessMessage?.let { Text(it) }
                             }
                         )
-
                         Spacer(modifier = Modifier.height(ButtonGap))
-
                         Button(
                             onClick = {
-                                val code =
-                                    developerAccessCode.trim()
-
+                                val code = developerAccessCode.trim()
                                 if (code.isBlank()) {
                                     developerAccessError = true
-                                    developerAccessMessage =
-                                        "Geliştirici erişim kodunu girin."
-
+                                    developerAccessMessage = "Geliştirici erişim kodunu girin."
                                     return@Button
                                 }
 
-                                val accessGranted =
-                                    onDeveloperAccessSubmit(code)
-
+                                val accessGranted = onDeveloperAccessSubmit(code)
                                 if (accessGranted) {
                                     developerAccessError = false
-
-                                    developerAccessMessage =
-                                        "Geliştirici erişimi etkinleştirildi."
-
+                                    developerAccessMessage = "Geliştirici erişimi etkinleştirildi."
                                     developerAccessCode = ""
                                     showDeveloperAccessInput = false
                                 } else {
                                     developerAccessError = true
-
-                                    developerAccessMessage =
-                                        "Erişim kodu geçersiz."
+                                    developerAccessMessage = "Erişim kodu geçersiz."
                                 }
                             },
-
-                            enabled =
-                            developerAccessCode.isNotBlank(),
-
+                            enabled = developerAccessCode.isNotBlank(),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Erişimi Doğrula")
                         }
-
                         Spacer(modifier = Modifier.height(SmallGap))
-
                         OutlinedButton(
                             onClick = {
                                 developerAccessCode = ""
@@ -340,11 +277,6 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(CardGap))
 
-        /*
-         * ---------------------------------------------------------
-         * GERİ DÖN
-         * ---------------------------------------------------------
-         */
         OutlinedButton(
             onClick = onBackClick,
             modifier = Modifier.fillMaxWidth()
@@ -352,23 +284,37 @@ fun SettingsScreen(
             Text("Geri Dön")
         }
 
-        /*
-         * En alttaki butonun navigation bar'a yapışmaması için
-         * ekstra boşluk.
-         */
         Spacer(modifier = Modifier.height(BottomGap))
+    }
+}
+
+@Composable
+private fun InfoCard(
+    title: String,
+    body: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(CardCornerRadius)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(CardPadding)
+        ) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(SmallGap))
+            Text(body, style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
 
 private val ScreenPadding = 24.dp
 private val VerticalScreenPadding = 24.dp
-
 private val CardPadding = 20.dp
 private val CardCornerRadius = 20.dp
-
 private val TitleGap = 20.dp
 private val SmallGap = 10.dp
-private val ParagraphGap = 8.dp
 private val CardGap = 16.dp
 private val ButtonGap = 16.dp
 private val BottomGap = 24.dp

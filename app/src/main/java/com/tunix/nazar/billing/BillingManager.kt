@@ -35,6 +35,11 @@ class BillingManager(
     private val onBillingReadyChanged: (Boolean) -> Unit = {},
 
     /*
+     * Google Play'den gelen yerelleştirilmiş abonelik fiyatı.
+     */
+    private val onSubscriptionPriceChanged: (String?) -> Unit = {},
+
+    /*
      * Satın alma sırasında oluşan kullanıcıya gösterilebilir
      * mesajları Activity'ye gönderir.
      *
@@ -227,6 +232,7 @@ class BillingManager(
                                  * Önce mevcut aboneliği doğrula.
                                  */
                                 queryPurchases()
+                                querySubscriptionPrice()
 
                                 /*
                                  * Kullanıcı bağlantı kurulmadan önce
@@ -379,6 +385,7 @@ class BillingManager(
             dispatchBillingReady(true)
 
             queryPurchases()
+            querySubscriptionPrice()
         } else {
             dispatchBillingReady(false)
 
@@ -431,6 +438,98 @@ class BillingManager(
              */
             .enableAutoServiceReconnection()
             .build()
+    }
+
+
+    /*
+     * =============================================================
+     * PRODUCT / PRICE QUERY
+     * =============================================================
+     */
+
+    private fun querySubscriptionPrice() {
+        if (isClosed || !billingClient.isReady) {
+            return
+        }
+
+        val product =
+            QueryProductDetailsParams.Product
+                .newBuilder()
+                .setProductId(productId)
+                .setProductType(
+                    BillingClient.ProductType.SUBS
+                )
+                .build()
+
+        val params =
+            QueryProductDetailsParams
+                .newBuilder()
+                .setProductList(
+                    listOf(product)
+                )
+                .build()
+
+        try {
+            billingClient.queryProductDetailsAsync(
+                params
+            ) { billingResult, queryResult ->
+
+                if (isClosed) {
+                    return@queryProductDetailsAsync
+                }
+
+                if (
+                    billingResult.responseCode !=
+                    BillingClient.BillingResponseCode.OK
+                ) {
+                    Log.w(
+                        TAG,
+                        "Abonelik fiyatı alınamadı: " +
+                                billingResult.debugMessage
+                    )
+                    return@queryProductDetailsAsync
+                }
+
+                val productDetails =
+                    queryResult
+                        .productDetailsList
+                        .firstOrNull { details ->
+                            details.productId == productId
+                        }
+
+                if (productDetails == null) {
+                    dispatchSubscriptionPrice(null)
+                    return@queryProductDetailsAsync
+                }
+
+                val offers =
+                    productDetails
+                        .subscriptionOfferDetails
+                        .orEmpty()
+
+                val selectedOffer =
+                    offers.firstOrNull { offer ->
+                        offer.offerId == null
+                    } ?: offers.firstOrNull()
+
+                val recurringPrice =
+                    selectedOffer
+                        ?.pricingPhases
+                        ?.pricingPhaseList
+                        ?.lastOrNull()
+                        ?.formattedPrice
+
+                dispatchSubscriptionPrice(
+                    recurringPrice
+                )
+            }
+        } catch (throwable: Throwable) {
+            Log.w(
+                TAG,
+                "Abonelik fiyatı sorgulanırken hata oluştu.",
+                throwable
+            )
+        }
     }
 
 
@@ -1260,6 +1359,33 @@ class BillingManager(
                 Log.e(
                     TAG,
                     "Abonelik callback'i çalıştırılırken hata oluştu.",
+                    throwable
+                )
+            }
+        }
+    }
+
+
+    private fun dispatchSubscriptionPrice(
+        formattedPrice: String?
+    ) {
+        if (isClosed) {
+            return
+        }
+
+        mainHandler.post {
+            if (isClosed) {
+                return@post
+            }
+
+            try {
+                onSubscriptionPriceChanged(
+                    formattedPrice
+                )
+            } catch (throwable: Throwable) {
+                Log.e(
+                    TAG,
+                    "Abonelik fiyat callback'i çalıştırılırken hata oluştu.",
                     throwable
                 )
             }
