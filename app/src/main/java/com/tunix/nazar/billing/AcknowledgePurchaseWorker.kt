@@ -6,7 +6,7 @@ import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
@@ -266,7 +266,10 @@ class AcknowledgePurchaseWorker(
                     .build()
 
             val request =
-                OneTimeWorkRequestBuilder<AcknowledgePurchaseWorker>()
+                OneTimeWorkRequest
+                    .Builder(
+                        AcknowledgePurchaseWorker::class.java
+                    )
                     .setInputData(
                         Data
                             .Builder()
