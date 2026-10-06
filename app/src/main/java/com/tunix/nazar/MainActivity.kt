@@ -656,6 +656,16 @@ class MainActivity : ComponentActivity() {
         if (::billingManager.isInitialized) {
             billingManager.refreshPurchases()
         }
+
+        notifySafeScreenVisibleToProtectionService()
+    }
+
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+
+        notifySafeScreenVisibleToProtectionService()
     }
 
 
@@ -968,6 +978,27 @@ class MainActivity : ComponentActivity() {
             this,
             serviceIntent
         )
+    }
+
+
+    private fun notifySafeScreenVisibleToProtectionService() {
+        if (!ScreenCaptureService.isRunning()) {
+            return
+        }
+
+        try {
+            startService(
+                Intent(
+                    this,
+                    ScreenCaptureService::class.java
+                ).apply {
+                    action =
+                        ScreenCaptureService.ACTION_SAFE_SCREEN_VISIBLE
+                }
+            )
+        } catch (_: Exception) {
+            // Servis kapanmışsa bir sonraki state senkronizasyonu UI'ı düzeltir.
+        }
     }
 
 
