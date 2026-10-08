@@ -176,7 +176,7 @@ class UnderlayVerificationStateMachineTest {
         assertTrue(
             machine.markVerificationPending(
                 generation = 10L,
-                requestedVerificationGeneration = 2L
+                requestedVerificationGeneration = 3L
             )
         )
 
