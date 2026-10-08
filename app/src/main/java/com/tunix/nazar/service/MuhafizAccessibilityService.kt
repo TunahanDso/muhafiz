@@ -2,6 +2,8 @@ package com.tunix.nazar.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.ActivityOptions
+import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -189,12 +191,19 @@ class MuhafizAccessibilityService : AccessibilityService() {
     override fun onUnbind(
         intent: Intent?
     ): Boolean {
+        /*
+         * When Accessibility is disabled, Android removes accessibility
+         * overlays as part of the service teardown. Pre-arm the legacy opaque
+         * overlay first so a blocked third-party page is never briefly exposed.
+         */
+        showLegacyFallbackBeforeDisconnect()
         notifyAccessibilityUnavailable()
         teardownLocalState()
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
+        showLegacyFallbackBeforeDisconnect()
         notifyAccessibilityUnavailable()
         teardownLocalState()
         super.onDestroy()
@@ -690,6 +699,36 @@ class MuhafizAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun showLegacyFallbackBeforeDisconnect() {
+        if (
+            blockedSessionGeneration ==
+            NO_SESSION
+        ) {
+            return
+        }
+
+        try {
+            startService(
+                Intent(
+                    this,
+                    OverlayService::class.java
+                ).apply {
+                    putExtra(
+                        OverlayService.EXTRA_SHOW_OVERLAY,
+                        true
+                    )
+                }
+            )
+        } catch (_: Exception) {
+            /*
+             * ScreenCaptureService receives the unavailable signal as the
+             * second safety net. Never remove a still-functional overlay here
+             * based on this failure.
+             */
+        }
+    }
+
+
     private fun notifyAccessibilityUnavailable() {
         if (
             blockedSessionGeneration ==
@@ -1090,19 +1129,78 @@ class MuhafizAccessibilityService : AccessibilityService() {
     }
 
     private fun openMuhafiz() {
+        val intent =
+            Intent(
+                this,
+                MainActivity::class.java
+            ).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+
+        /*
+         * The button is user-visible and the send is a direct tap. Opt into
+         * Android 14+ BAL only for this explicit interaction. API 36 narrows
+         * this further to ALLOW_IF_VISIBLE.
+         */
         try {
-            startActivity(
-                Intent(
-                    this,
-                    MainActivity::class.java
-                ).apply {
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                                Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    )
+            val creatorOptions =
+                if (
+                    Build.VERSION.SDK_INT >=
+                    Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+                ) {
+                    ActivityOptions.makeBasic()
+                        .setPendingIntentCreatorBackgroundActivityStartMode(
+                            ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                        )
+                        .toBundle()
+                } else {
+                    null
                 }
-            )
+
+            val pendingIntent =
+                PendingIntent.getActivity(
+                    this,
+                    REQUEST_CODE_RETURN_TO_MUHAFIZ,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or
+                            PendingIntent.FLAG_IMMUTABLE,
+                    creatorOptions
+                )
+
+            if (
+                Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+            ) {
+                val sendOptions =
+                    ActivityOptions.makeBasic()
+                        .setPendingIntentBackgroundActivityStartMode(
+                            if (
+                                Build.VERSION.SDK_INT >=
+                                Build.VERSION_CODES.BAKLAVA
+                            ) {
+                                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE
+                            } else {
+                                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                            }
+                        )
+                        .toBundle()
+
+                pendingIntent.send(
+                    this,
+                    0,
+                    null,
+                    null,
+                    null,
+                    null,
+                    sendOptions
+                )
+            } else {
+                pendingIntent.send()
+            }
         } catch (_: Exception) {
             // Fail closed: keep the overlay visible.
         }
@@ -1140,6 +1238,9 @@ class MuhafizAccessibilityService : AccessibilityService() {
 
         private const val RATE_LIMIT_BACKOFF_MS =
             1000L
+
+        private const val REQUEST_CODE_RETURN_TO_MUHAFIZ =
+            2002
 
         private const val CONSENT_PREFS =
             "muhafiz_accessibility_consent"
