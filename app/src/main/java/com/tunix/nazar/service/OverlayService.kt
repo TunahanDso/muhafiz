@@ -1,6 +1,8 @@
 package com.tunix.nazar.service
 
+import android.app.ActivityOptions
 import android.app.KeyguardManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -247,19 +249,79 @@ class OverlayService : Service() {
     }
 
     private fun openMuhafiz() {
+        val intent =
+            Intent(
+                this,
+                MainActivity::class.java
+            ).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+
+        /*
+         * Android 14+ background-activity-launch rules require a sender opt-in
+         * when a PendingIntent is fired from a service. The button is visible
+         * and this send happens only as a direct user action, so API 36's
+         * ALLOW_IF_VISIBLE mode is the narrowest appropriate grant.
+         */
         try {
-            startActivity(
-                Intent(
-                    this,
-                    MainActivity::class.java
-                ).apply {
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                                Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    )
+            val creatorOptions =
+                if (
+                    Build.VERSION.SDK_INT >=
+                    Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+                ) {
+                    ActivityOptions.makeBasic()
+                        .setPendingIntentCreatorBackgroundActivityStartMode(
+                            ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                        )
+                        .toBundle()
+                } else {
+                    null
                 }
-            )
+
+            val pendingIntent =
+                PendingIntent.getActivity(
+                    this,
+                    REQUEST_CODE_RETURN_TO_MUHAFIZ,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or
+                            PendingIntent.FLAG_IMMUTABLE,
+                    creatorOptions
+                )
+
+            if (
+                Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+            ) {
+                val sendOptions =
+                    ActivityOptions.makeBasic()
+                        .setPendingIntentBackgroundActivityStartMode(
+                            if (
+                                Build.VERSION.SDK_INT >=
+                                Build.VERSION_CODES.BAKLAVA
+                            ) {
+                                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE
+                            } else {
+                                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                            }
+                        )
+                        .toBundle()
+
+                pendingIntent.send(
+                    this,
+                    0,
+                    null,
+                    null,
+                    null,
+                    null,
+                    sendOptions
+                )
+            } else {
+                pendingIntent.send()
+            }
         } catch (_: Exception) {
             // Fail closed: overlay stays visible if the safe app cannot open.
         }
@@ -289,5 +351,8 @@ class OverlayService : Service() {
 
     companion object {
         const val EXTRA_SHOW_OVERLAY = "extra_show_overlay"
+
+        private const val REQUEST_CODE_RETURN_TO_MUHAFIZ =
+            2001
     }
 }
