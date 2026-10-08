@@ -52,6 +52,9 @@ class MuhafizAccessibilityService : AccessibilityService() {
     private val screenshotInFlight =
         AtomicBoolean(false)
 
+    private val tornDown =
+        AtomicBoolean(false)
+
     private var interpreter: BinaryNsfwInterpreter? = null
     private var frameClassifier: UnderlayFrameClassifier? = null
 
@@ -91,12 +94,15 @@ class MuhafizAccessibilityService : AccessibilityService() {
          * XML already requests interactive windows. Keeping the flag here makes
          * the runtime contract explicit if an OEM rewrites ServiceInfo fields.
          */
+        val updatedServiceInfo =
+            serviceInfo
+
+        updatedServiceInfo.flags =
+            updatedServiceInfo.flags or
+                    AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+
         serviceInfo =
-            serviceInfo.apply {
-                flags =
-                    flags or
-                            AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-            }
+            updatedServiceInfo
 
         analysisExecutor.execute {
             val localInterpreter =
@@ -104,6 +110,13 @@ class MuhafizAccessibilityService : AccessibilityService() {
 
             val loaded =
                 localInterpreter.loadModel()
+
+            if (
+                tornDown.get()
+            ) {
+                localInterpreter.close()
+                return@execute
+            }
 
             if (loaded) {
                 interpreter = localInterpreter
@@ -187,6 +200,15 @@ class MuhafizAccessibilityService : AccessibilityService() {
     }
 
     private fun teardownLocalState() {
+        if (
+            !tornDown.compareAndSet(
+                false,
+                true
+            )
+        ) {
+            return
+        }
+
         if (activeInstance === this) {
             activeInstance = null
         }
@@ -343,9 +365,9 @@ class MuhafizAccessibilityService : AccessibilityService() {
             takeScreenshotOfWindow(
                 target.windowId,
                 analysisExecutor,
-                object : TakeScreenshotCallback {
+                object : AccessibilityService.TakeScreenshotCallback {
                     override fun onSuccess(
-                        screenshotResult: ScreenshotResult
+                        screenshotResult: AccessibilityService.ScreenshotResult
                     ) {
                         screenshotInFlight.set(false)
 
@@ -392,7 +414,7 @@ class MuhafizAccessibilityService : AccessibilityService() {
         session: Long,
         verification: Long,
         target: TargetWindow,
-        screenshotResult: ScreenshotResult
+        screenshotResult: AccessibilityService.ScreenshotResult
     ) {
         val hardwareBuffer =
             screenshotResult.hardwareBuffer
