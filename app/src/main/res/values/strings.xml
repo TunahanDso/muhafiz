@@ -2,5 +2,12 @@
     <string name="app_name">Muhafız</string>
     <string name="block_title">Muhafız</string>
     <string name="block_message">İçerik Muhafız tarafından gizlendi. Koruma ayarlarına ulaşmak için bildirim panelinden Muhafız uygulamasını açın.</string>
+    <string name="block_message_auto">İçerik uygun bulunmadı ve gizlendi. Riskli sayfadan çıkmak için telefonun geri hareketini kullanabilirsiniz. Muhafız ekran güvenli olduğunda otomatik olarak yeniden açacaktır.</string>
+    <string name="block_message_verifying">Güvenli ekran kontrol ediliyor… Koruma perdesi doğrulama tamamlanana kadar açık kalacaktır.</string>
+    <string name="block_message_manual">Bu ekran otomatik olarak doğrulanamadı. Önce telefonun geri hareketini kullanarak riskli sayfadan çıkın, ardından Muhafız’a dönün.</string>
+    <string name="block_message_legacy">Riskli içerik gizlendi. Bu Android sürümünde Muhafız, koruma perdesini kaldırmadan alttaki sayfanın güvenli olduğunu otomatik doğrulayamaz. 1. Riskli sayfadan çıkmak için telefonun geri hareketini kullanın. 2. Ardından Muhafız’a dönün.</string>
+    <string name="block_return_to_muhafiz">Muhafız’a dön</string>
+    <string name="accessibility_service_description">Muhafız, Android 14 ve üzerindeki cihazlarda engellenen içeriğin arkasındaki uygulama penceresini cihaz üzerinde doğrulamak için bu hizmeti kullanır.</string>
+    <string name="accessibility_service_label">Muhafız gelişmiş ekran doğrulama</string>
     <string name="device_admin_description">Muhafız korumasının çocuk tarafından kolayca devre dışı bırakılmasını önlemeye yardımcı olur.</string>
 </resources>
