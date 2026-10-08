@@ -214,6 +214,15 @@ android {
                 "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    /*
+     * NSFW model mmap ile açılır. Asset'in sıkıştırılmaması hem mevcut
+     * FileChannel mapping davranışını açıkça garanti eder hem de runtime
+     * tarafında gereksiz kopyalamayı önler.
+     */
+    androidResources {
+        noCompress += "tflite"
+    }
 }
 
 
