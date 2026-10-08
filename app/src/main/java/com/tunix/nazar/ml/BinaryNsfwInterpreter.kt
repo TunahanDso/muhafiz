@@ -4,10 +4,11 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import org.tensorflow.lite.Interpreter
-import org.tensorflow.lite.support.common.FileUtil
+import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
+import java.nio.channels.FileChannel
 import kotlin.math.max
 
 class BinaryNsfwInterpreter(
@@ -180,7 +181,27 @@ class BinaryNsfwInterpreter(
     }
 
     private fun loadModelFile(fileName: String): MappedByteBuffer {
-        return FileUtil.loadMappedFile(context, fileName)
+        /*
+         * tensorflow-lite-support yalnız FileUtil.loadMappedFile için
+         * kullanılıyordu. Aynı memory-mapped model yükleme davranışını
+         * doğrudan Android AssetManager + FileChannel ile koruyoruz.
+         *
+         * nsfw_binary.tflite asset'i mevcut release hattında zaten
+         * uncompressed paketlendiği için openFd kullanılabilir.
+         */
+        return context.assets
+            .openFd(fileName)
+            .use { assetFileDescriptor ->
+                FileInputStream(
+                    assetFileDescriptor.fileDescriptor
+                ).channel.use { channel ->
+                    channel.map(
+                        FileChannel.MapMode.READ_ONLY,
+                        assetFileDescriptor.startOffset,
+                        assetFileDescriptor.declaredLength
+                    )
+                }
+            }
     }
 
     companion object {
