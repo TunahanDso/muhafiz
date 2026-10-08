@@ -192,7 +192,17 @@ class OverlayService : Service() {
         }
 
         val messageView = TextView(this).apply {
-            text = getString(com.tunix.nazar.R.string.block_message_legacy)
+            text =
+                getString(
+                    if (
+                        Build.VERSION.SDK_INT >=
+                        Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+                    ) {
+                        com.tunix.nazar.R.string.block_message_accessibility_disabled
+                    } else {
+                        com.tunix.nazar.R.string.block_message_legacy
+                    }
+                )
             setTextColor(Color.WHITE)
             textSize = 18f
             gravity = Gravity.CENTER
