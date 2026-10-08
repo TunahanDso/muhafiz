@@ -843,11 +843,22 @@ class MainActivity : ComponentActivity() {
     private fun prepareProtectionStart() {
         if (
             Build.VERSION.SDK_INT <
-            Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
+            Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+        ) {
+            startProtectionFlow()
+            return
+        }
+
+        val accessibilityReady =
             MuhafizAccessibilityService.isEnabled(
                 this
-            )
-        ) {
+            ) &&
+                    MuhafizAccessibilityService
+                        .hasUserConsent(
+                            this
+                        )
+
+        if (accessibilityReady) {
             startProtectionFlow()
             return
         }
@@ -880,6 +891,22 @@ class MainActivity : ComponentActivity() {
             .setPositiveButton(
                 "Anladım, Erişilebilirlik Ayarlarını Aç"
             ) { _, _ ->
+                MuhafizAccessibilityService
+                    .setUserConsent(
+                        this,
+                        true
+                    )
+
+                if (
+                    MuhafizAccessibilityService
+                        .isEnabled(
+                            this
+                        )
+                ) {
+                    startProtectionFlow()
+                    return@setPositiveButton
+                }
+
                 pendingProtectionStartAfterAccessibilitySettings =
                     true
 
@@ -905,6 +932,12 @@ class MainActivity : ComponentActivity() {
             .setNegativeButton(
                 "Şimdilik kullanma"
             ) { _, _ ->
+                MuhafizAccessibilityService
+                    .setUserConsent(
+                        this,
+                        false
+                    )
+
                 showToast(
                     message =
                         "Koruma manuel geri dönüş modunda başlatılacak.",
