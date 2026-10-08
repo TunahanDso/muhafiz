@@ -151,10 +151,33 @@ class ScreenCaptureService : Service() {
             if (serviceRunning.get()) {
                 hideOverlay(force = true)
                 resetDetectionState()
+                lastAnalysisTimestamp = 0L
 
                 updateUserNotification(
                     title = "Muhafız koruması aktif",
                     text = "Güvenli ekran açık; koruma izlemeye devam ediyor"
+                )
+            }
+
+            return START_NOT_STICKY
+        }
+
+        /*
+         * Kullanıcı blok ekranındayken alttaki uygulamada geri
+         * gittiyse veya içeriği değiştirdiyse mevcut ekranı yeniden
+         * değerlendirebilmek için overlay'i kontrollü olarak kaldırırız.
+         * Capture oturumu kapanmaz. Bir sonraki frame hemen analiz edilir;
+         * içerik hâlâ riskliyse koruma tekrar açılır.
+         */
+        if (intent?.action == ACTION_RECHECK_UNDERLYING_CONTENT) {
+            if (serviceRunning.get()) {
+                hideOverlay(force = true)
+                resetDetectionState()
+                lastAnalysisTimestamp = 0L
+
+                updateUserNotification(
+                    title = "Muhafız koruması aktif",
+                    text = "Ekran yeniden kontrol ediliyor"
                 )
             }
 
@@ -1854,6 +1877,9 @@ class ScreenCaptureService : Service() {
 
         const val ACTION_SAFE_SCREEN_VISIBLE =
             "com.tunix.nazar.action.SAFE_SCREEN_VISIBLE"
+
+        const val ACTION_RECHECK_UNDERLYING_CONTENT =
+            "com.tunix.nazar.action.RECHECK_UNDERLYING_CONTENT"
 
         const val EXTRA_PROTECTION_RUNNING =
             "extra_protection_running"
