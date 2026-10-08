@@ -2,6 +2,7 @@ package com.tunix.nazar.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -1206,16 +1207,22 @@ class MuhafizAccessibilityService : AccessibilityService() {
                         AccessibilityServiceInfo.FEEDBACK_ALL_MASK
                     )
 
+            val expectedComponent =
+                ComponentName(
+                    context,
+                    MuhafizAccessibilityService::class.java
+                )
+
             return enabled.any { info ->
-                val serviceInfo =
+                val resolvedService =
                     info.resolveInfo
                         ?.serviceInfo
                         ?: return@any false
 
-                serviceInfo.packageName ==
-                        context.packageName &&
-                        serviceInfo.name ==
-                        MuhafizAccessibilityService::class.java.name
+                ComponentName(
+                    resolvedService.packageName,
+                    resolvedService.name
+                ) == expectedComponent
             }
         }
 
