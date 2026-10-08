@@ -1141,6 +1141,12 @@ class MuhafizAccessibilityService : AccessibilityService() {
         private const val RATE_LIMIT_BACKOFF_MS =
             1000L
 
+        private const val CONSENT_PREFS =
+            "muhafiz_accessibility_consent"
+
+        private const val KEY_ACCESSIBILITY_CONSENT =
+            "accessibility_disclosure_accepted"
+
         @Volatile
         private var activeInstance:
                 MuhafizAccessibilityService? =
@@ -1156,6 +1162,14 @@ class MuhafizAccessibilityService : AccessibilityService() {
             val service =
                 activeInstance
                     ?: return false
+
+            if (
+                !hasUserConsent(
+                    service
+                )
+            ) {
+                return false
+            }
 
             service.mainHandler.post {
                 service.showOverlayInternal(
@@ -1184,6 +1198,37 @@ class MuhafizAccessibilityService : AccessibilityService() {
             service.mainHandler.post {
                 service.showManualFallback()
             }
+        }
+
+        fun hasUserConsent(
+            context: Context
+        ): Boolean {
+            return context
+                .getSharedPreferences(
+                    CONSENT_PREFS,
+                    Context.MODE_PRIVATE
+                )
+                .getBoolean(
+                    KEY_ACCESSIBILITY_CONSENT,
+                    false
+                )
+        }
+
+        fun setUserConsent(
+            context: Context,
+            granted: Boolean
+        ) {
+            context
+                .getSharedPreferences(
+                    CONSENT_PREFS,
+                    Context.MODE_PRIVATE
+                )
+                .edit()
+                .putBoolean(
+                    KEY_ACCESSIBILITY_CONSENT,
+                    granted
+                )
+                .apply()
         }
 
         fun isEnabled(
