@@ -1,6 +1,8 @@
 package com.tunix.nazar.service
 
+import android.app.ActivityOptions
 import android.app.KeyguardManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -12,9 +14,11 @@ import android.os.PowerManager
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.tunix.nazar.MainActivity
 
 class OverlayService : Service() {
 
@@ -188,7 +192,17 @@ class OverlayService : Service() {
         }
 
         val messageView = TextView(this).apply {
-            text = getString(com.tunix.nazar.R.string.block_message)
+            text =
+                getString(
+                    if (
+                        Build.VERSION.SDK_INT >=
+                        Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+                    ) {
+                        com.tunix.nazar.R.string.block_message_accessibility_disabled
+                    } else {
+                        com.tunix.nazar.R.string.block_message_legacy
+                    }
+                )
             setTextColor(Color.WHITE)
             textSize = 18f
             gravity = Gravity.CENTER
@@ -212,6 +226,26 @@ class OverlayService : Service() {
             )
         )
 
+        val returnButton = Button(this).apply {
+            text = getString(com.tunix.nazar.R.string.block_return_to_muhafiz)
+            isAllCaps = false
+            textSize = 16f
+
+            setOnClickListener {
+                openMuhafiz()
+            }
+        }
+
+        content.addView(
+            returnButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(24)
+            }
+        )
+
         root.addView(
             content,
             FrameLayout.LayoutParams(
@@ -222,6 +256,85 @@ class OverlayService : Service() {
         )
 
         return root
+    }
+
+    private fun openMuhafiz() {
+        val intent =
+            Intent(
+                this,
+                MainActivity::class.java
+            ).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+
+        /*
+         * Android 14+ background-activity-launch rules require a sender opt-in
+         * when a PendingIntent is fired from a service. The button is visible
+         * and this send happens only as a direct user action, so API 36's
+         * ALLOW_IF_VISIBLE mode is the narrowest appropriate grant.
+         */
+        try {
+            val creatorOptions =
+                if (
+                    Build.VERSION.SDK_INT >=
+                    Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+                ) {
+                    ActivityOptions.makeBasic()
+                        .setPendingIntentCreatorBackgroundActivityStartMode(
+                            ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                        )
+                        .toBundle()
+                } else {
+                    null
+                }
+
+            val pendingIntent =
+                PendingIntent.getActivity(
+                    this,
+                    REQUEST_CODE_RETURN_TO_MUHAFIZ,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or
+                            PendingIntent.FLAG_IMMUTABLE,
+                    creatorOptions
+                )
+
+            if (
+                Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+            ) {
+                val sendOptions =
+                    ActivityOptions.makeBasic()
+                        .setPendingIntentBackgroundActivityStartMode(
+                            if (
+                                Build.VERSION.SDK_INT >=
+                                Build.VERSION_CODES.BAKLAVA
+                            ) {
+                                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE
+                            } else {
+                                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                            }
+                        )
+                        .toBundle()
+
+                pendingIntent.send(
+                    this,
+                    0,
+                    null,
+                    null,
+                    null,
+                    null,
+                    sendOptions
+                )
+            } else {
+                pendingIntent.send()
+            }
+        } catch (_: Exception) {
+            // Fail closed: overlay stays visible if the safe app cannot open.
+        }
     }
 
     private fun createLayoutParams(): WindowManager.LayoutParams {
@@ -248,5 +361,8 @@ class OverlayService : Service() {
 
     companion object {
         const val EXTRA_SHOW_OVERLAY = "extra_show_overlay"
+
+        private const val REQUEST_CODE_RETURN_TO_MUHAFIZ =
+            2001
     }
 }

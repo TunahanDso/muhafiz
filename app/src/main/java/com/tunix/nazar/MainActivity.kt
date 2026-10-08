@@ -43,6 +43,7 @@ import com.tunix.nazar.billing.BillingManager
 import com.tunix.nazar.receiver.MuhafizDeviceAdminReceiver
 import com.tunix.nazar.security.DeveloperAccessManager
 import com.tunix.nazar.security.ParentLockManager
+import com.tunix.nazar.service.MuhafizAccessibilityService
 import com.tunix.nazar.service.OverlayService
 import com.tunix.nazar.service.ScreenCaptureService
 import com.tunix.nazar.ui.screens.HomeScreen
@@ -113,6 +114,13 @@ class MainActivity : ComponentActivity() {
      */
 
     private var protectionStateReceiverRegistered =
+        false
+
+    /*
+     * Accessibility Settings'e yönlendirme sonrasında koruma akışını
+     * yalnız kullanıcı uygulamaya geri döndüğünde devam ettirir.
+     */
+    private var pendingProtectionStartAfterAccessibilitySettings =
         false
 
     /*
@@ -447,6 +455,10 @@ class MainActivity : ComponentActivity() {
                     subscriptionPrice =
                         subscriptionPriceState.value,
 
+                    onRetrySubscriptionInfoClick = {
+                        billingManager.refreshPurchases()
+                    },
+
 
                     /*
                      * -------------------------------------------------
@@ -507,7 +519,7 @@ class MainActivity : ComponentActivity() {
                              */
                             hasProtectionAccess -> {
 
-                                startProtectionFlow()
+                                prepareProtectionStart()
                             }
 
 
@@ -652,6 +664,40 @@ class MainActivity : ComponentActivity() {
         if (::billingManager.isInitialized) {
             billingManager.refreshPurchases()
         }
+
+        notifySafeScreenVisibleToProtectionService()
+
+        if (
+            pendingProtectionStartAfterAccessibilitySettings
+        ) {
+            pendingProtectionStartAfterAccessibilitySettings =
+                false
+
+            if (
+                Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+                !MuhafizAccessibilityService.isEnabled(
+                    this
+                )
+            ) {
+                showToast(
+                    message =
+                        "Gelişmiş otomatik doğrulama etkinleştirilmedi. " +
+                                "Koruma güvenli manuel geri dönüş modunda çalışacak.",
+                    long = true
+                )
+            }
+
+            startProtectionFlow()
+        }
+    }
+
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+
+        notifySafeScreenVisibleToProtectionService()
     }
 
 
@@ -793,6 +839,117 @@ class MainActivity : ComponentActivity() {
      * PROTECTION START FLOW
      * =============================================================
      */
+
+    private fun prepareProtectionStart() {
+        if (
+            Build.VERSION.SDK_INT <
+            Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+        ) {
+            startProtectionFlow()
+            return
+        }
+
+        val accessibilityReady =
+            MuhafizAccessibilityService.isEnabled(
+                this
+            ) &&
+                    MuhafizAccessibilityService
+                        .hasUserConsent(
+                            this
+                        )
+
+        if (accessibilityReady) {
+            startProtectionFlow()
+            return
+        }
+
+        showAccessibilityDisclosure()
+    }
+
+
+    private fun showAccessibilityDisclosure() {
+        android.app.AlertDialog.Builder(
+            this
+        )
+            .setTitle(
+                "Gelişmiş ekran doğrulama"
+            )
+            .setMessage(
+                "Muhafız, riskli içerik engellendikten sonra alttaki uygulama " +
+                        "penceresinin artık güvenli olup olmadığını doğrulamak için " +
+                        "Android Erişilebilirlik hizmetini kullanabilir.\n\n" +
+                        "Bu erişim yalnızca koruma sırasında pencere değişikliklerini " +
+                        "algılamak ve Android 14 ve üzerindeki desteklenen cihazlarda " +
+                        "ilgili uygulama penceresinin görüntüsünü cihaz üzerinde analiz " +
+                        "etmek için kullanılır.\n\n" +
+                        "Pencere görüntüleri cihaz üzerinde anlık olarak işlenir; " +
+                        "kaydedilmez, sunucuya gönderilmez ve üçüncü taraflarla " +
+                        "paylaşılmaz. Muhafız bu erişimi sizin adınıza tıklama yapmak, " +
+                        "mesaj göndermek, metin yazmak veya uygulamalarda otomatik " +
+                        "gezinmek için kullanmaz."
+            )
+            .setPositiveButton(
+                "Anladım, Erişilebilirlik Ayarlarını Aç"
+            ) { _, _ ->
+                MuhafizAccessibilityService
+                    .setUserConsent(
+                        this,
+                        true
+                    )
+
+                if (
+                    MuhafizAccessibilityService
+                        .isEnabled(
+                            this
+                        )
+                ) {
+                    startProtectionFlow()
+                    return@setPositiveButton
+                }
+
+                pendingProtectionStartAfterAccessibilitySettings =
+                    true
+
+                try {
+                    startActivity(
+                        MuhafizAccessibilityService
+                            .openSettingsIntent()
+                    )
+                } catch (_: Exception) {
+                    pendingProtectionStartAfterAccessibilitySettings =
+                        false
+
+                    showToast(
+                        message =
+                            "Erişilebilirlik ayarları açılamadı. " +
+                                    "Manuel geri dönüş modu kullanılacak.",
+                        long = true
+                    )
+
+                    startProtectionFlow()
+                }
+            }
+            .setNegativeButton(
+                "Şimdilik kullanma"
+            ) { _, _ ->
+                MuhafizAccessibilityService
+                    .setUserConsent(
+                        this,
+                        false
+                    )
+
+                showToast(
+                    message =
+                        "Koruma manuel geri dönüş modunda başlatılacak.",
+                    long = true
+                )
+
+                startProtectionFlow()
+            }
+            .setCancelable(true)
+            .show()
+    }
+
 
     private fun startProtectionFlow() {
 
@@ -967,6 +1124,27 @@ class MainActivity : ComponentActivity() {
     }
 
 
+    private fun notifySafeScreenVisibleToProtectionService() {
+        if (!ScreenCaptureService.isRunning()) {
+            return
+        }
+
+        try {
+            startService(
+                Intent(
+                    this,
+                    ScreenCaptureService::class.java
+                ).apply {
+                    action =
+                        ScreenCaptureService.ACTION_SAFE_SCREEN_VISIBLE
+                }
+            )
+        } catch (_: Exception) {
+            // Servis kapanmışsa bir sonraki state senkronizasyonu UI'ı düzeltir.
+        }
+    }
+
+
     private fun stopProtectionServices() {
 
         try {
@@ -1084,6 +1262,7 @@ private fun MuhafizApp(
     isBillingReady: Boolean,
     subscriptionPrice: String?,
 
+    onRetrySubscriptionInfoClick: () -> Unit,
     onSubscribeClick: () -> Unit,
     onManageSubscriptionClick: () -> Unit,
     onPrivacyPolicyClick: () -> Unit,
@@ -1201,6 +1380,9 @@ private fun MuhafizApp(
 
                 subscriptionPrice =
                     subscriptionPrice,
+
+                onRetrySubscriptionInfoClick =
+                    onRetrySubscriptionInfoClick,
 
 
                 /*

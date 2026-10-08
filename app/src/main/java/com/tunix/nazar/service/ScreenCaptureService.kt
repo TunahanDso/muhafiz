@@ -2,6 +2,7 @@ package com.tunix.nazar.service
 
 import android.app.Activity
 import android.app.KeyguardManager
+import android.app.PendingIntent
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -15,12 +16,18 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import com.tunix.nazar.MainActivity
 import com.tunix.nazar.R
+import com.tunix.nazar.domain.UnderlayEvidence
+import com.tunix.nazar.domain.UnderlayTarget
+import com.tunix.nazar.domain.UnderlayVerificationStateMachine
+import com.tunix.nazar.domain.UnderlayVerificationToken
 import com.tunix.nazar.ml.BinaryNsfwInterpreter
 import com.tunix.nazar.ml.BinaryNsfwResult
 import com.tunix.nazar.projection.ImageFrameReader
 import com.tunix.nazar.projection.ProjectionController
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 class ScreenCaptureService : Service() {
 
@@ -39,6 +46,32 @@ class ScreenCaptureService : Service() {
     private val serviceRunning = AtomicBoolean(false)
     private val isReconfiguringCapture = AtomicBoolean(false)
 
+    /*
+     * Her capture reader/session değişiminde artar.
+     * Eski reader'dan veya kapanmış oturumdan geç gelen analiz
+     * sonuçlarının overlay/state değiştirmesini engeller.
+     */
+    private val captureGeneration = AtomicLong(0L)
+
+    /*
+     * MediaProjection reader generation'dan ayrıdır. Rotation reader'ı
+     * değiştirse bile aynı koruma oturumu altında kalır.
+     */
+    private val protectionSessionGeneration =
+        AtomicLong(0L)
+
+    private val underlayStateMachine =
+        UnderlayVerificationStateMachine()
+
+    @Volatile
+    private var overlayBackend =
+        OverlayBackend.NONE
+
+    /*
+     * Sistem kaynaklı MediaProjection kapanışını yalnızca bir kez işler.
+     */
+    private val projectionTerminationHandled = AtomicBoolean(false)
+
     private var lastAnalysisTimestamp: Long = 0L
     private var lastNotificationTimestamp: Long = 0L
     private var lastDisplayCheckTimestamp: Long = 0L
@@ -50,6 +83,7 @@ class ScreenCaptureService : Service() {
 
     private var highRiskFrameCount: Int = 0
     private var clearFrameCount: Int = 0
+    @Volatile
     private var isOverlayVisible: Boolean = false
 
     private var protectionPausedByDeviceLock: Boolean = false
@@ -99,7 +133,13 @@ class ScreenCaptureService : Service() {
     override fun onCreate() {
         super.onCreate()
 
-        projectionController = ProjectionController(this)
+        projectionController =
+            ProjectionController(
+                context = this,
+                onProjectionStoppedBySystem = {
+                    handleProjectionStoppedBySystem()
+                }
+            )
         binaryNsfwInterpreter = BinaryNsfwInterpreter(this)
 
         notificationManager =
@@ -122,33 +162,32 @@ class ScreenCaptureService : Service() {
     ): Int {
 
         /*
-         * Android servisi yeniden oluşturmuş fakat eski Intent henüz
-         * gelmemiş olabilir.
-         *
-         * Bu durumda aktif MediaProjection varmış gibi davranmıyoruz.
+         * Same-process control commands never contain or replay a
+         * MediaProjection consent token.
          */
-        if (intent == null) {
-            if (serviceRunning.get()) {
-                return START_REDELIVER_INTENT
-            }
-
-            startForeground(
-                NOTIFICATION_ID,
-                buildNotification(
-                    title = "Muhafız koruması beklemede",
-                    text = "Koruma yeniden başlatma verisi bekliyor"
-                )
-            )
-
-            return START_STICKY
+        if (handleControlIntent(intent)) {
+            return START_NOT_STICKY
         }
 
         /*
-         * Koruma zaten gerçekten çalışıyorsa ikinci kez
-         * MediaProjection oluşturmuyoruz.
+         * MediaProjection izin Intent'i Android 14+ üzerinde tek
+         * kullanımlıktır. Sistem servisi process death sonrası eski
+         * Intent ile yeniden başlatırsa onu tekrar kullanmıyoruz.
+         */
+        if (intent == null) {
+            serviceRunning.set(false)
+            captureGeneration.incrementAndGet()
+            publishProtectionState(false)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        /*
+         * Aynı çalışan oturuma ikinci start gelirse mevcut capture'ı
+         * bozmadan isteği yok say.
          */
         if (serviceRunning.get()) {
-            return START_REDELIVER_INTENT
+            return START_NOT_STICKY
         }
 
         val resultCode =
@@ -196,6 +235,8 @@ class ScreenCaptureService : Service() {
         }
 
         try {
+            projectionTerminationHandled.set(false)
+
             val modelLoaded =
                 binaryNsfwInterpreter?.loadModel() == true
 
@@ -252,6 +293,16 @@ class ScreenCaptureService : Service() {
              * Dolayısıyla koruma gerçekten çalışıyor.
              */
             serviceRunning.set(true)
+
+            val sessionGeneration =
+                protectionSessionGeneration
+                    .incrementAndGet()
+
+            underlayStateMachine
+                .startSession(
+                    sessionGeneration
+                )
+
             publishProtectionState(true)
 
             if (isDeviceLockedOrScreenInactive()) {
@@ -283,10 +334,11 @@ class ScreenCaptureService : Service() {
         }
 
         /*
-         * Android servis prosesini öldürürse mümkün olduğunda
-         * başlangıç Intent'ini yeniden teslim etmeye çalışır.
+         * MediaProjection consent token yeniden teslim edilemez.
+         * Process/service ölürse kullanıcı korumayı yeniden başlatır
+         * ve yeni sistem izni verir.
          */
-        return START_REDELIVER_INTENT
+        return START_NOT_STICKY
     }
 
     /*
@@ -309,26 +361,33 @@ class ScreenCaptureService : Service() {
 
     override fun onDestroy() {
         /*
-         * ---------------------------------------------------------
-         * GERÇEK KORUMA DURUMUNU KAPAT
-         * ---------------------------------------------------------
-         *
-         * MainActivity bundan sonra isRunning() çağırırsa false
-         * görecektir.
+         * Önce session'ı geçersiz kıl. Böylece o sırada çalışan bir
+         * inference tamamlanırsa sonucu overlay'e uygulayamaz.
          */
+        projectionTerminationHandled.set(true)
         serviceRunning.set(false)
+        captureGeneration.incrementAndGet()
+        protectionSessionGeneration.incrementAndGet()
+        underlayStateMachine.stopSession()
         publishProtectionState(false)
 
         unregisterDeviceStateReceiver()
 
-        hideOverlay(force = true)
-
+        /*
+         * Yeni frame üretimini durdur; ardından projection/model
+         * kaynaklarını bırak. Overlay en son kesin olarak temizlenir.
+         */
         releaseFrameReader()
 
         binaryNsfwInterpreter?.close()
         binaryNsfwInterpreter = null
 
         projectionController.stopProjection()
+
+        isProcessingFrame.set(false)
+        protectionPausedByDeviceLock = false
+
+        hideOverlay(force = true)
 
         keyguardManager = null
         powerManager = null
@@ -356,10 +415,13 @@ class ScreenCaptureService : Service() {
         sendBroadcast(stateIntent)
     }
 
-    private fun handleIncomingFrame(bitmap: Bitmap) {
+    private fun handleIncomingFrame(
+        bitmap: Bitmap,
+        generation: Long
+    ) {
         val now = System.currentTimeMillis()
 
-        if (!serviceRunning.get()) {
+        if (!isAnalysisSessionValid(generation)) {
             bitmap.recycleSafely()
             return
         }
@@ -370,6 +432,15 @@ class ScreenCaptureService : Service() {
         }
 
         if (maybeReconfigureCaptureForRotation(now)) {
+            bitmap.recycleSafely()
+            return
+        }
+
+        // Display capture has no trusted view of the application beneath our
+        // opaque window. This applies to EVERY frame, not only black frames:
+        // overlay text and System UI must never count as clean content.
+        // Keep rotation handling above this gate so the existing display is resized.
+        if (isOverlayVisible) {
             bitmap.recycleSafely()
             return
         }
@@ -430,6 +501,14 @@ class ScreenCaptureService : Service() {
                     interpreter = interpreter
                 )
 
+            /*
+             * Inference sürerken servis/projection kapanmış veya
+             * reader değiştirilmiş olabilir.
+             */
+            if (!isAnalysisSessionValid(generation)) {
+                return
+            }
+
             val result =
                 classifiedFrame.result
 
@@ -449,7 +528,9 @@ class ScreenCaptureService : Service() {
                 now = now
             )
         } catch (_: Exception) {
-            keepOrHideOverlayAfterError(now)
+            if (isAnalysisSessionValid(generation)) {
+                keepOrHideOverlayAfterError(now)
+            }
         } finally {
             bitmap.recycleSafely()
             isProcessingFrame.set(false)
@@ -460,52 +541,157 @@ class ScreenCaptureService : Service() {
         val displayMetrics =
             resources.displayMetrics
 
-        screenWidthPx =
+        val newScreenWidth =
             displayMetrics.widthPixels
 
-        screenHeightPx =
+        val newScreenHeight =
             displayMetrics.heightPixels
 
         val analysisSize =
             calculateAnalysisSize(
-                screenWidth = screenWidthPx,
-                screenHeight = screenHeightPx
+                screenWidth = newScreenWidth,
+                screenHeight = newScreenHeight
             )
 
-        analysisWidthPx =
-            analysisSize.width
+        val generation =
+            captureGeneration.incrementAndGet()
 
-        analysisHeightPx =
-            analysisSize.height
-
-        releaseFrameReader()
-
-        imageFrameReader =
+        val reader =
             ImageFrameReader(
-                width = analysisWidthPx,
-                height = analysisHeightPx
-            ).also { reader ->
+                width = analysisSize.width,
+                height = analysisSize.height
+            )
 
-                reader.initialize { bitmap ->
-                    handleIncomingFrame(bitmap)
-                }
+        return try {
+            reader.initialize { bitmap ->
+                handleIncomingFrame(
+                    bitmap = bitmap,
+                    generation = generation
+                )
             }
 
-        val surface =
-            imageFrameReader?.getSurface()
-                ?: return false
+            val surface =
+                reader.getSurface()
+                    ?: throw IllegalStateException(
+                        "ImageReader Surface oluşturulamadı."
+                    )
 
-        projectionController.createVirtualDisplay(
-            name = "MuhafizScreenCapture",
-            width = analysisWidthPx,
-            height = analysisHeightPx,
-            densityDpi = displayMetrics.densityDpi,
-            surface = surface
-        )
+            projectionController.createVirtualDisplay(
+                name = "MuhafizScreenCapture",
+                width = analysisSize.width,
+                height = analysisSize.height,
+                densityDpi = displayMetrics.densityDpi,
+                surface = surface
+            )
 
-        resetDetectionState()
+            releaseFrameReader()
 
-        return true
+            imageFrameReader = reader
+
+            screenWidthPx = newScreenWidth
+            screenHeightPx = newScreenHeight
+            analysisWidthPx = analysisSize.width
+            analysisHeightPx = analysisSize.height
+
+            resetDetectionState()
+
+            true
+        } catch (_: Exception) {
+            try {
+                reader.release()
+            } catch (_: Exception) {
+            }
+
+            false
+        }
+    }
+
+    private fun reconfigureCaptureForCurrentDisplay(): Boolean {
+        val displayMetrics =
+            resources.displayMetrics
+
+        val newScreenWidth =
+            displayMetrics.widthPixels
+
+        val newScreenHeight =
+            displayMetrics.heightPixels
+
+        val analysisSize =
+            calculateAnalysisSize(
+                screenWidth = newScreenWidth,
+                screenHeight = newScreenHeight
+            )
+
+        val generation =
+            captureGeneration.incrementAndGet()
+
+        val newReader =
+            ImageFrameReader(
+                width = analysisSize.width,
+                height = analysisSize.height
+            )
+
+        val oldReader =
+            imageFrameReader
+
+        return try {
+            newReader.initialize { bitmap ->
+                handleIncomingFrame(
+                    bitmap = bitmap,
+                    generation = generation
+                )
+            }
+
+            val newSurface =
+                newReader.getSurface()
+                    ?: throw IllegalStateException(
+                        "Yeni ImageReader Surface oluşturulamadı."
+                    )
+
+            /*
+             * Android 14+:
+             * Aynı MediaProjection üzerinde ikinci
+             * createVirtualDisplay çağrısı yapılmaz.
+             */
+            projectionController.resizeVirtualDisplay(
+                width = analysisSize.width,
+                height = analysisSize.height,
+                densityDpi = displayMetrics.densityDpi,
+                surface = newSurface
+            )
+
+            imageFrameReader = newReader
+
+            screenWidthPx = newScreenWidth
+            screenHeightPx = newScreenHeight
+            analysisWidthPx = analysisSize.width
+            analysisHeightPx = analysisSize.height
+
+            try {
+                oldReader?.release()
+            } catch (_: Exception) {
+            }
+
+            resetDetectionState()
+
+            true
+        } catch (_: Exception) {
+            try {
+                newReader.release()
+            } catch (_: Exception) {
+            }
+
+            /*
+             * Generation değiştiği için eski reader sonuçları artık
+             * bilinçli olarak kabul edilmez. Fail-closed davran:
+             * kullanıcıya aktif koruma varmış gibi gösterme.
+             */
+            handleCaptureFailure(
+                "Ekran yönü değişiminden sonra yakalama yenilenemedi."
+            )
+
+            false
+        }
     }
 
     private fun maybeReconfigureCaptureForRotation(
@@ -548,14 +734,283 @@ class ScreenCaptureService : Service() {
         }
 
         return try {
-            configureCaptureForCurrentDisplay()
+            reconfigureCaptureForCurrentDisplay()
             true
-        } catch (_: Exception) {
-            false
         } finally {
             isReconfiguringCapture.set(false)
         }
     }
+
+    private fun isAnalysisSessionValid(
+        generation: Long
+    ): Boolean {
+        return serviceRunning.get() &&
+                captureGeneration.get() == generation &&
+                projectionController.isProjectionRunning()
+    }
+
+    private fun handleProjectionStoppedBySystem() {
+        if (
+            !projectionTerminationHandled.compareAndSet(
+                false,
+                true
+            )
+        ) {
+            return
+        }
+
+        handleCaptureFailure(
+            "Ekran yakalama sistem tarafından durduruldu. Koruma için yeniden başlatın."
+        )
+    }
+
+    private fun handleCaptureFailure(
+        message: String
+    ) {
+        serviceRunning.set(false)
+        captureGeneration.incrementAndGet()
+        protectionSessionGeneration.incrementAndGet()
+        underlayStateMachine.stopSession()
+        publishProtectionState(false)
+
+        protectionPausedByDeviceLock = false
+
+        releaseFrameReader()
+        hideOverlay(force = true)
+        resetDetectionState()
+
+        updateUserNotification(
+            title = "Muhafız koruması durdu",
+            text = message.take(
+                MAX_NOTIFICATION_TEXT_LENGTH
+            )
+        )
+
+        stopSelf()
+    }
+
+
+    private fun handleControlIntent(
+        intent: Intent?
+    ): Boolean {
+        when (intent?.action) {
+            ACTION_SAFE_SCREEN_VISIBLE -> {
+                if (serviceRunning.get()) {
+                    underlayStateMachine
+                        .forceMonitoring(
+                            protectionSessionGeneration.get()
+                        )
+
+                    hideOverlay(
+                        force = true
+                    )
+
+                    resetDetectionState()
+                    lastAnalysisTimestamp = 0L
+
+                    updateUserNotification(
+                        title = "Muhafız koruması aktif",
+                        text = "Güvenli ekran açık; koruma izlemeye devam ediyor"
+                    )
+                }
+
+                return true
+            }
+
+            ACTION_UNDERLAY_VERIFY_PENDING -> {
+                if (
+                    serviceRunning.get() &&
+                    isOverlayVisible &&
+                    overlayBackend ==
+                    OverlayBackend.ACCESSIBILITY
+                ) {
+                    underlayStateMachine
+                        .markVerificationPending(
+                            generation =
+                                intent.getLongExtra(
+                                    EXTRA_SESSION_GENERATION,
+                                    -1L
+                                ),
+                            requestedVerificationGeneration =
+                                intent.getLongExtra(
+                                    EXTRA_VERIFICATION_GENERATION,
+                                    -1L
+                                )
+                        )
+                }
+
+                return true
+            }
+
+            ACTION_UNDERLAY_VERIFY_STARTED -> {
+                if (
+                    serviceRunning.get() &&
+                    isOverlayVisible &&
+                    overlayBackend ==
+                    OverlayBackend.ACCESSIBILITY
+                ) {
+                    parseVerificationToken(
+                        intent
+                    )?.let { token ->
+                        underlayStateMachine
+                            .beginVerification(
+                                token
+                            )
+                    }
+                }
+
+                return true
+            }
+
+            ACTION_UNDERLAY_RESULT -> {
+                handleUnderlayResult(
+                    intent
+                )
+                return true
+            }
+
+            ACTION_ACCESSIBILITY_UNAVAILABLE -> {
+                val session =
+                    intent.getLongExtra(
+                        EXTRA_SESSION_GENERATION,
+                        -1L
+                    )
+
+                if (
+                    serviceRunning.get() &&
+                    isOverlayVisible &&
+                    overlayBackend ==
+                    OverlayBackend.ACCESSIBILITY &&
+                    session ==
+                    protectionSessionGeneration.get()
+                ) {
+                    underlayStateMachine
+                        .forceBlocked(
+                            session
+                        )
+
+                    showLegacyOverlay()
+                }
+
+                return true
+            }
+
+            else ->
+                return false
+        }
+    }
+
+    private fun handleUnderlayResult(
+        intent: Intent
+    ) {
+        if (
+            !serviceRunning.get() ||
+            !isOverlayVisible ||
+            overlayBackend !=
+            OverlayBackend.ACCESSIBILITY
+        ) {
+            return
+        }
+
+        val token =
+            parseVerificationToken(
+                intent
+            ) ?: return
+
+        val evidence =
+            intent.getStringExtra(
+                EXTRA_UNDERLAY_EVIDENCE
+            )
+                ?.let { raw ->
+                    runCatching {
+                        UnderlayEvidence.valueOf(
+                            raw
+                        )
+                    }.getOrNull()
+                }
+                ?: return
+
+        val decision =
+            underlayStateMachine
+                .recordEvidence(
+                    token,
+                    evidence
+                )
+
+        if (!decision.accepted) {
+            return
+        }
+
+        if (
+            evidence ==
+            UnderlayEvidence.CLEAN &&
+            decision.cleanThresholdReached &&
+            !shouldKeepOverlayVisible(
+                System.currentTimeMillis()
+            ) &&
+            underlayStateMachine
+                .confirmMonitoring(
+                    token
+                )
+        ) {
+            hideOverlay()
+
+            updateUserNotification(
+                title = "Muhafız koruması aktif",
+                text = "Ekran içeriği izleniyor"
+            )
+        }
+    }
+
+    private fun parseVerificationToken(
+        intent: Intent
+    ): UnderlayVerificationToken? {
+        val session =
+            intent.getLongExtra(
+                EXTRA_SESSION_GENERATION,
+                -1L
+            )
+
+        val verification =
+            intent.getLongExtra(
+                EXTRA_VERIFICATION_GENERATION,
+                -1L
+            )
+
+        val windowId =
+            intent.getIntExtra(
+                EXTRA_WINDOW_ID,
+                -1
+            )
+
+        val windowPackage =
+            intent.getStringExtra(
+                EXTRA_WINDOW_PACKAGE
+            )
+                ?.takeIf {
+                    it.isNotBlank()
+                }
+                ?: return null
+
+        if (
+            session < 0L ||
+            verification < 0L ||
+            windowId < 0
+        ) {
+            return null
+        }
+
+        return UnderlayVerificationToken(
+            sessionGeneration = session,
+            verificationGeneration = verification,
+            target =
+                UnderlayTarget(
+                    windowId = windowId,
+                    packageName = windowPackage
+                )
+        )
+    }
+
 
     private fun calculateAnalysisSize(
         screenWidth: Int,
@@ -634,6 +1089,10 @@ class ScreenCaptureService : Service() {
         riskLevel: RiskLevel,
         now: Long
     ) {
+        if (!serviceRunning.get()) {
+            return
+        }
+
         if (shouldSuspendAnalysisBecauseDeviceLocked()) {
             return
         }
@@ -681,6 +1140,12 @@ class ScreenCaptureService : Service() {
             }
 
             RiskLevel.NONE -> {
+                // Also reject a clean result that was already in flight when
+                // the blocking window was requested.
+                if (isOverlayVisible) {
+                    clearFrameCount = 0
+                    return
+                }
                 clearFrameCount++
                 highRiskFrameCount = 0
 
@@ -984,11 +1449,13 @@ class ScreenCaptureService : Service() {
          * perdemiz olabilir.
          */
         if (isOverlayVisible) {
-            handleDetectionResult(
-                riskLevel = RiskLevel.NONE,
-                now = now
-            )
-
+            /*
+             * Siyah frame kendi overlay'imiz olabilir. Bu kareyi
+             * "temiz içerik" kanıtı saymak riskli içeriğin tekrar
+             * görünmesine yol açabilir. Fail-closed: overlay açık
+             * kalır ve clear counter ilerlemez.
+             */
+            clearFrameCount = 0
             return true
         }
 
@@ -1214,6 +1681,10 @@ class ScreenCaptureService : Service() {
     }
 
     private fun showOverlay(now: Long) {
+        if (!serviceRunning.get()) {
+            return
+        }
+
         if (
             shouldSuspendAnalysisBecauseDeviceLocked()
         ) {
@@ -1221,24 +1692,55 @@ class ScreenCaptureService : Service() {
         }
 
         if (!isOverlayVisible) {
-            val intent =
-                Intent(
-                    this,
-                    OverlayService::class.java
-                ).apply {
-                    putExtra(
-                        OverlayService.EXTRA_SHOW_OVERLAY,
-                        true
-                    )
-                }
+            val session =
+                protectionSessionGeneration.get()
 
-            startServiceCompat(intent)
+            underlayStateMachine.block(
+                session
+            )
+
+            val accessibilityOverlayStarted =
+                Build.VERSION.SDK_INT >=
+                        Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+                        MuhafizAccessibilityService.isConnected() &&
+                        MuhafizAccessibilityService
+                            .showProtectionOverlay(
+                                session
+                            )
+
+            if (accessibilityOverlayStarted) {
+                overlayBackend =
+                    OverlayBackend.ACCESSIBILITY
+            } else {
+                showLegacyOverlay()
+            }
 
             overlayVisibleSinceTimestamp =
                 now
         }
 
         isOverlayVisible = true
+    }
+
+    private fun showLegacyOverlay() {
+        val intent =
+            Intent(
+                this,
+                OverlayService::class.java
+            ).apply {
+                putExtra(
+                    OverlayService.EXTRA_SHOW_OVERLAY,
+                    true
+                )
+            }
+
+        startServiceCompat(intent)
+
+        overlayBackend =
+            OverlayBackend.LEGACY
+
+        isOverlayVisible =
+            true
     }
 
     private fun hideOverlay(
@@ -1251,7 +1753,10 @@ class ScreenCaptureService : Service() {
             return
         }
 
-        val intent =
+        MuhafizAccessibilityService
+            .hideProtectionOverlay()
+
+        val legacyIntent =
             Intent(
                 this,
                 OverlayService::class.java
@@ -1262,7 +1767,17 @@ class ScreenCaptureService : Service() {
                 )
             }
 
-        startServiceCompat(intent)
+        startServiceCompat(
+            legacyIntent
+        )
+
+        underlayStateMachine
+            .forceMonitoring(
+                protectionSessionGeneration.get()
+            )
+
+        overlayBackend =
+            OverlayBackend.NONE
 
         isOverlayVisible = false
         overlayVisibleSinceTimestamp = 0L
@@ -1320,6 +1835,11 @@ class ScreenCaptureService : Service() {
 
     private fun resumeProtectionAfterDeviceUnlocked() {
         if (!protectionPausedByDeviceLock) {
+            return
+        }
+
+        if (!projectionController.isProjectionRunning()) {
+            handleProjectionStoppedBySystem()
             return
         }
 
@@ -1449,10 +1969,36 @@ class ScreenCaptureService : Service() {
                 NotificationCompat.BigTextStyle()
                     .bigText(text)
             )
+            .setContentIntent(
+                createOpenAppPendingIntent()
+            )
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()
     }
+
+    private fun createOpenAppPendingIntent(): PendingIntent {
+        val intent =
+            Intent(
+                this,
+                MainActivity::class.java
+            ).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+
+        return PendingIntent.getActivity(
+            this,
+            REQUEST_CODE_OPEN_APP,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                    PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
 
     private fun updateUserNotification(
         title: String,
@@ -1540,10 +2086,17 @@ class ScreenCaptureService : Service() {
     private fun keepOrHideOverlayAfterError(
         now: Long
     ) {
-        if (
-            !shouldKeepOverlayVisible(now)
-        ) {
-            hideOverlay()
+        /*
+         * Analiz hatası "temiz içerik" kanıtı değildir.
+         * Overlay zaten açıksa güvenli tarafta kalır; kapalıysa
+         * yalnızca bir sonraki frame beklenir.
+         */
+        if (isOverlayVisible) {
+            lastRiskDetectedTimestamp =
+                maxOf(
+                    lastRiskDetectedTimestamp,
+                    now
+                )
         }
     }
 
@@ -1585,6 +2138,12 @@ class ScreenCaptureService : Service() {
                         bottomRatio == 1f
     }
 
+    private enum class OverlayBackend {
+        NONE,
+        LEGACY,
+        ACCESSIBILITY
+    }
+
     private enum class RiskLevel {
         NONE,
         SUSTAINED,
@@ -1602,8 +2161,38 @@ class ScreenCaptureService : Service() {
         const val ACTION_PROTECTION_STATE_CHANGED =
             "com.tunix.nazar.action.PROTECTION_STATE_CHANGED"
 
+        const val ACTION_SAFE_SCREEN_VISIBLE =
+            "com.tunix.nazar.action.SAFE_SCREEN_VISIBLE"
+
+        const val ACTION_UNDERLAY_VERIFY_PENDING =
+            "com.tunix.nazar.action.UNDERLAY_VERIFY_PENDING"
+
+        const val ACTION_UNDERLAY_VERIFY_STARTED =
+            "com.tunix.nazar.action.UNDERLAY_VERIFY_STARTED"
+
+        const val ACTION_UNDERLAY_RESULT =
+            "com.tunix.nazar.action.UNDERLAY_RESULT"
+
+        const val ACTION_ACCESSIBILITY_UNAVAILABLE =
+            "com.tunix.nazar.action.ACCESSIBILITY_UNAVAILABLE"
+
         const val EXTRA_PROTECTION_RUNNING =
             "extra_protection_running"
+
+        const val EXTRA_SESSION_GENERATION =
+            "extra_session_generation"
+
+        const val EXTRA_VERIFICATION_GENERATION =
+            "extra_verification_generation"
+
+        const val EXTRA_WINDOW_ID =
+            "extra_window_id"
+
+        const val EXTRA_WINDOW_PACKAGE =
+            "extra_window_package"
+
+        const val EXTRA_UNDERLAY_EVIDENCE =
+            "extra_underlay_evidence"
 
         /*
          * =========================================================
@@ -1633,6 +2222,9 @@ class ScreenCaptureService : Service() {
 
         private const val NOTIFICATION_ID =
             1001
+
+        private const val REQUEST_CODE_OPEN_APP =
+            1002
 
         private const val MAX_NOTIFICATION_TEXT_LENGTH =
             120

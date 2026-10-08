@@ -1,6 +1,14 @@
 <resources>
     <string name="app_name">Muhafız</string>
     <string name="block_title">Muhafız</string>
-    <string name="block_message">İçerik Muhafız tarafından uygun bulunmadı ve gizlendi.</string>
+    <string name="block_message">İçerik Muhafız tarafından gizlendi. Koruma ayarlarına ulaşmak için bildirim panelinden Muhafız uygulamasını açın.</string>
+    <string name="block_message_auto">İçerik uygun bulunmadı ve gizlendi. Riskli sayfadan çıkmak için telefonun geri hareketini kullanabilirsiniz. Muhafız ekran güvenli olduğunda otomatik olarak yeniden açacaktır.</string>
+    <string name="block_message_verifying">Güvenli ekran kontrol ediliyor… Koruma perdesi doğrulama tamamlanana kadar açık kalacaktır.</string>
+    <string name="block_message_manual">Bu ekran otomatik olarak doğrulanamadı. Bazı korumalı veya doğrulanamayan ekranlarda otomatik kontrol kullanılamayabilir. Manuel devam edin: 1. Telefonun geri hareketiyle riskli sayfadan çıkın. 2. Ardından “Muhafız’a dön” düğmesine dokunun.</string>
+    <string name="block_message_legacy">Riskli içerik gizlendi. Android 11–13 sürümlerinde otomatik güvenli ekran doğrulaması desteklenmiyor. Manuel devam edin: 1. Telefonun geri hareketiyle riskli sayfadan çıkın. 2. Ardından “Muhafız’a dön” düğmesine dokunun.</string>
+    <string name="block_message_accessibility_disabled">Riskli içerik gizlendi. Cihazınız otomatik güvenli ekran doğrulamasını destekliyor ancak Muhafız Erişilebilirlik hizmeti şu anda etkin değil. Otomatik kullanım için Android ayarlarından Muhafız Erişilebilirlik hizmetini etkinleştirin. Şimdilik manuel devam edin: 1. Telefonun geri hareketiyle riskli sayfadan çıkın. 2. Ardından “Muhafız’a dön” düğmesine dokunun.</string>
+    <string name="block_return_to_muhafiz">Muhafız’a dön</string>
+    <string name="accessibility_service_description">Muhafız, Android 14 ve üzerindeki cihazlarda engellenen içeriğin arkasındaki uygulama penceresini cihaz üzerinde doğrulamak için bu hizmeti kullanır.</string>
+    <string name="accessibility_service_label">Muhafız gelişmiş ekran doğrulama</string>
     <string name="device_admin_description">Muhafız korumasının çocuk tarafından kolayca devre dışı bırakılmasını önlemeye yardımcı olur.</string>
 </resources>

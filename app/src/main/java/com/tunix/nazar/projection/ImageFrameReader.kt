@@ -127,7 +127,18 @@ class ImageFrameReader(
         if (thread != null) {
             try {
                 thread.quitSafely()
-                thread.join(THREAD_JOIN_TIMEOUT_MS)
+
+                /*
+                 * release() frame callback'inin çalıştığı HandlerThread
+                 * içinden de çağrılabilir (örn. rotation reconfigure).
+                 * Thread'in kendisini join etmesi timeout boyunca gereksiz
+                 * blok oluşturur; yalnızca başka bir thread'den kapanırken bekle.
+                 */
+                if (Thread.currentThread() !== thread) {
+                    thread.join(
+                        THREAD_JOIN_TIMEOUT_MS
+                    )
+                }
             } catch (_: Exception) {
                 /*
                  * Thread join başarısız olsa bile servis kapanışı engellenmemeli.

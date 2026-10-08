@@ -3,10 +3,11 @@ package com.tunix.nazar.ml
 import android.content.Context
 import android.graphics.Bitmap
 import org.tensorflow.lite.Interpreter
-import org.tensorflow.lite.support.common.FileUtil
+import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
+import java.nio.channels.FileChannel
 import java.util.Locale
 import kotlin.math.max
 
@@ -281,14 +282,37 @@ class NsfwInterpreter(
     }
 
     private fun loadModelFile(fileName: String): MappedByteBuffer {
-        return FileUtil.loadMappedFile(context, fileName)
+        return context.assets
+            .openFd(fileName)
+            .use { assetFileDescriptor ->
+                FileInputStream(
+                    assetFileDescriptor.fileDescriptor
+                ).channel.use { channel ->
+                    channel.map(
+                        FileChannel.MapMode.READ_ONLY,
+                        assetFileDescriptor.startOffset,
+                        assetFileDescriptor.declaredLength
+                    )
+                }
+            }
     }
 
     private fun loadLabels(fileName: String): List<String> {
         return try {
-            FileUtil.loadLabels(context, fileName)
-                .map { it.trim().lowercase(Locale.ROOT) }
-                .filter { it.isNotBlank() }
+            context.assets
+                .open(fileName)
+                .bufferedReader()
+                .useLines { lines ->
+                    lines
+                        .map {
+                            it.trim()
+                                .lowercase(Locale.ROOT)
+                        }
+                        .filter {
+                            it.isNotBlank()
+                        }
+                        .toList()
+                }
         } catch (_: Exception) {
             // Label dosyası okunamazsa bilinen model sırasına düşülür.
             DEFAULT_LABELS

@@ -30,6 +30,7 @@ fun HomeScreen(
     hasDeveloperAccess: Boolean,
     isBillingReady: Boolean,
     subscriptionPrice: String?,
+    onRetrySubscriptionInfoClick: () -> Unit,
     onSetupPinClick: () -> Unit,
     onProtectionToggleClick: () -> Unit,
     onSubscribeClick: () -> Unit,
@@ -168,16 +169,46 @@ fun HomeScreen(
 
             Button(
                 onClick = onSubscribeClick,
-                enabled = isBillingReady,
+                enabled =
+                    isBillingReady &&
+                            subscriptionPrice != null,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = if (isBillingReady) {
-                        "Aylık Abonelik Başlat"
-                    } else {
-                        "Abonelik Sistemi Hazırlanıyor"
+                    text = when {
+                        !isBillingReady ->
+                            "Abonelik Sistemi Hazırlanıyor"
+
+                        subscriptionPrice == null ->
+                            "Fiyat Bilgisi Bekleniyor"
+
+                        else ->
+                            "Aylık Abonelik Başlat"
                     }
                 )
+            }
+
+            if (
+                isBillingReady &&
+                subscriptionPrice == null
+            ) {
+                Spacer(
+                    modifier =
+                        Modifier.height(
+                            MediumGap
+                        )
+                )
+
+                OutlinedButton(
+                    onClick =
+                        onRetrySubscriptionInfoClick,
+                    modifier =
+                        Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "Fiyatı Yeniden Dene"
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(MediumGap))

@@ -266,6 +266,7 @@ class BillingManager(
                             isConnecting = false
 
                             dispatchBillingReady(false)
+                            dispatchSubscriptionPrice(null)
 
                             Log.w(
                                 TAG,
@@ -482,6 +483,8 @@ class BillingManager(
                     billingResult.responseCode !=
                     BillingClient.BillingResponseCode.OK
                 ) {
+                    dispatchSubscriptionPrice(null)
+
                     Log.w(
                         TAG,
                         "Abonelik fiyatı alınamadı: " +
@@ -502,15 +505,21 @@ class BillingManager(
                     return@queryProductDetailsAsync
                 }
 
-                val offers =
-                    productDetails
-                        .subscriptionOfferDetails
-                        .orEmpty()
-
                 val selectedOffer =
-                    offers.firstOrNull { offer ->
-                        offer.offerId == null
-                    } ?: offers.firstOrNull()
+                    selectPreferredMonthlyOffer(
+                        productDetails
+                    )
+
+                if (selectedOffer == null) {
+                    dispatchSubscriptionPrice(null)
+
+                    Log.e(
+                        TAG,
+                        "Aylık (P1M) abonelik base planı bulunamadı."
+                    )
+
+                    return@queryProductDetailsAsync
+                }
 
                 val recurringPrice =
                     selectedOffer
@@ -713,6 +722,39 @@ class BillingManager(
     }
 
 
+    /**
+     * Muhafız'ın ürün modeli aylık aboneliktir.
+     *
+     * Öncelik:
+     * 1) offerId == null olan normal aylık base plan
+     * 2) Kullanıcının uygun olduğu başka bir aylık teklif
+     *
+     * Böylece UI fiyatı ve launchBillingFlow aynı planı seçer.
+     */
+    private fun selectPreferredMonthlyOffer(
+        productDetails: ProductDetails
+    ): ProductDetails.SubscriptionOfferDetails? {
+
+        val monthlyOffers =
+            productDetails
+                .subscriptionOfferDetails
+                .orEmpty()
+                .filter { offer ->
+                    offer
+                        .pricingPhases
+                        .pricingPhaseList
+                        .lastOrNull()
+                        ?.billingPeriod == MONTHLY_BILLING_PERIOD
+                }
+
+        return monthlyOffers
+            .firstOrNull { offer ->
+                offer.offerId == null
+            }
+            ?: monthlyOffers.firstOrNull()
+    }
+
+
     /*
      * =============================================================
      * PURCHASE FLOW
@@ -742,38 +784,26 @@ class BillingManager(
         }
 
         /*
-         * Kullanıcı için uygun tüm abonelik teklifleri.
+         * UI'da gösterilen fiyatla satın alınan teklif aynı seçim
+         * kuralından geçer. Muhafız yalnızca aylık (P1M) planı kabul eder.
          */
-        val offers =
-            productDetails.subscriptionOfferDetails
-                .orEmpty()
+        val selectedOffer =
+            selectPreferredMonthlyOffer(
+                productDetails
+            )
 
-        if (offers.isEmpty()) {
+        if (selectedOffer == null) {
             Log.e(
                 TAG,
-                "Abonelik için uygun offer/base plan bulunamadı."
+                "Kullanılabilir aylık (P1M) abonelik planı bulunamadı."
             )
 
             failPurchaseFlow(
-                "Bu hesap için kullanılabilir bir abonelik planı bulunamadı."
+                "Bu hesap için kullanılabilir aylık abonelik planı bulunamadı."
             )
 
             return
         }
-
-        /*
-         * Öncelik:
-         *
-         * 1. İndirimsiz normal base plan (offerId == null)
-         * 2. Kullanıcının uygun olduğu ilk teklif
-         *
-         * Böylece sırf listede ilk geldiği için yanlışlıkla
-         * promosyon offer'ı seçilmez.
-         */
-        val selectedOffer =
-            offers.firstOrNull { offer ->
-                offer.offerId == null
-            } ?: offers.first()
 
         val offerToken =
             selectedOffer.offerToken
@@ -1196,6 +1226,16 @@ class BillingManager(
                     acknowledgePurchase(
                         activePurchase
                     )
+                } else {
+                    /*
+                     * WorkManager'da daha önce kalmış retry varsa
+                     * artık gereksizdir.
+                     */
+                    AcknowledgePurchaseWorker.cancel(
+                        context = appContext,
+                        purchaseToken =
+                            activePurchase.purchaseToken
+                    )
                 }
 
                 if (purchaseFlowInProgress) {
@@ -1235,6 +1275,16 @@ class BillingManager(
             return
         }
 
+        /*
+         * Immediate acknowledge'tan ÖNCE kalıcı retry planlanır.
+         * Process tam bu sırada ölse bile WorkManager token'ı daha
+         * sonra yeniden acknowledge etmeyi dener.
+         */
+        AcknowledgePurchaseWorker.enqueue(
+            context = appContext,
+            purchaseToken = purchase.purchaseToken
+        )
+
         val acknowledgeParams =
             AcknowledgePurchaseParams
                 .newBuilder()
@@ -1264,14 +1314,18 @@ class BillingManager(
                 )
 
                 if (
-                    billingResult.responseCode !=
+                    billingResult.responseCode ==
                     BillingClient.BillingResponseCode.OK
                 ) {
+                    AcknowledgePurchaseWorker.cancel(
+                        context = appContext,
+                        purchaseToken = purchase.purchaseToken
+                    )
+                } else {
                     /*
-                     * Hak hemen kapatılmaz.
-                     *
-                     * Bir sonraki refresh/query sırasında acknowledge
-                     * yeniden denenebilir.
+                     * Kalıcı WorkManager retry zaten planlandı.
+                     * Hak hemen kapatılmaz; geçici hata arka planda
+                     * tekrar denenir.
                      */
                     Log.e(
                         TAG,
@@ -1618,5 +1672,8 @@ class BillingManager(
 
         private const val PRODUCT_ID =
             "muhafiz_monthly"
+
+        private const val MONTHLY_BILLING_PERIOD =
+            "P1M"
     }
 }

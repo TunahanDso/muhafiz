@@ -12,92 +12,103 @@ import android.view.Surface
 import java.util.concurrent.atomic.AtomicBoolean
 
 class ProjectionController(
-    private val context: Context
+    context: Context,
+    private val onProjectionStoppedBySystem: () -> Unit = {}
 ) {
-    /*
-     * Android'in ekran yakalama izni ve MediaProjection oturumlarını yöneten sistem servisi.
-     * Kullanıcıdan ekran yakalama izni almak için bu manager üzerinden intent oluşturulur.
-     */
     private val projectionManager =
         context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
-    /*
-     * MediaProjection callback'leri ana thread üzerinde kayıtlanır.
-     * Bu, Android yaşam döngüsüyle daha güvenli çalışır.
-     */
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val mainHandler =
+        Handler(Looper.getMainLooper())
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
 
     /*
-     * stopProjection aynı anda birden fazla kez çağrılırsa çift release/stop riskini engeller.
+     * Explicit stop ile sistem kaynaklı stop'u birbirinden ayırır.
+     * Explicit stop'ta callback önce unregister edildiği için servis
+     * yanlışlıkla ikinci kez "projection sonlandı" akışına girmez.
      */
-    private val isStopping = AtomicBoolean(false)
+    private val isStopping =
+        AtomicBoolean(false)
 
-    private val projectionCallback = object : MediaProjection.Callback() {
-        override fun onStop() {
-            /*
-             * Bu callback sistem tarafından tetiklenebilir:
-             * - Kullanıcı ekran yakalama iznini sonlandırırsa
-             * - Sistem MediaProjection oturumunu kapatırsa
-             * - Servis lifecycle dışından durdurulursa
-             *
-             * Bu yüzden sadece VirtualDisplay temizlenir ve state sıfırlanır.
-             */
-            releaseVirtualDisplayOnly()
-            mediaProjection = null
-            isStopping.set(false)
+    private val projectionCallback =
+        object : MediaProjection.Callback() {
+
+            override fun onStop() {
+                /*
+                 * Android 15 QPR1+ ekran kilidinde veya kullanıcı
+                 * sistemdeki projection chip'inden paylaşımı durdurduğunda
+                 * bu callback gelir. Bu durumda capture session artık
+                 * geçerli değildir ve aynı izin Intent'i yeniden kullanılamaz.
+                 */
+                releaseVirtualDisplayOnly()
+                mediaProjection = null
+
+                val stoppedExplicitly =
+                    isStopping.getAndSet(false)
+
+                if (!stoppedExplicitly) {
+                    onProjectionStoppedBySystem()
+                }
+            }
         }
-    }
 
     fun createScreenCaptureIntent(): Intent {
-        /*
-         * Bu intent MainActivity tarafından launch edilir.
-         * Kullanıcı izin verirse resultCode + data ScreenCaptureService'e gönderilir.
-         */
         return projectionManager.createScreenCaptureIntent()
     }
 
-    fun startProjection(resultCode: Int, data: Intent): MediaProjection {
-        /*
-         * Yeni bir projection başlatmadan önce eski oturum varsa kapatılır.
-         * Böylece aynı anda iki VirtualDisplay/MediaProjection çakışması önlenir.
-         */
+    fun startProjection(
+        resultCode: Int,
+        data: Intent
+    ): MediaProjection {
+
         stopProjection()
 
-        val projection = try {
-            projectionManager.getMediaProjection(resultCode, data)
-        } catch (e: Exception) {
-            throw IllegalStateException(
-                "Muhafız ekran yakalama izni başlatılamadı: ${e.message ?: e.javaClass.simpleName}",
-                e
+        val projection =
+            try {
+                projectionManager.getMediaProjection(
+                    resultCode,
+                    data
+                )
+            } catch (e: Exception) {
+                throw IllegalStateException(
+                    "Muhafız ekran yakalama izni başlatılamadı: " +
+                            (e.message ?: e.javaClass.simpleName),
+                    e
+                )
+            } ?: throw IllegalStateException(
+                "Muhafız ekran yakalama oturumu oluşturulamadı."
             )
-        } ?: throw IllegalStateException("Muhafız ekran yakalama oturumu oluşturulamadı.")
 
         try {
-            projection.registerCallback(projectionCallback, mainHandler)
+            projection.registerCallback(
+                projectionCallback,
+                mainHandler
+            )
         } catch (e: Exception) {
-            /*
-             * Callback kaydı başarısızsa projection açık bırakılmamalı.
-             * Aksi halde sistem kaynağı sızıntısı oluşabilir.
-             */
             try {
                 projection.stop()
             } catch (_: Exception) {
             }
 
             throw IllegalStateException(
-                "Muhafız ekran yakalama callback kaydı başarısız: ${e.message ?: e.javaClass.simpleName}",
+                "Muhafız ekran yakalama callback kaydı başarısız: " +
+                        (e.message ?: e.javaClass.simpleName),
                 e
             )
         }
 
         mediaProjection = projection
         isStopping.set(false)
+
         return projection
     }
 
+    /**
+     * Bir MediaProjection instance'ında createVirtualDisplay yalnızca
+     * bir kez çağrılır. Android 14+ bu kuralı zorunlu tutar.
+     */
     fun createVirtualDisplay(
         name: String,
         width: Int,
@@ -105,44 +116,101 @@ class ProjectionController(
         densityDpi: Int,
         surface: Surface
     ): VirtualDisplay {
-        /*
-         * VirtualDisplay için geçersiz boyutlar Android tarafında crash veya
-         * boş frame üretimi gibi sorunlara sebep olabilir.
-         */
-        require(name.isNotBlank()) { "VirtualDisplay adı boş olamaz." }
-        require(width > 0) { "VirtualDisplay genişliği 0'dan büyük olmalıdır." }
-        require(height > 0) { "VirtualDisplay yüksekliği 0'dan büyük olmalıdır." }
-        require(densityDpi > 0) { "VirtualDisplay densityDpi 0'dan büyük olmalıdır." }
 
-        val projection = mediaProjection
-            ?: throw IllegalStateException("Ekran yakalama oturumu başlatılmadan VirtualDisplay oluşturulamaz.")
+        require(name.isNotBlank()) {
+            "VirtualDisplay adı boş olamaz."
+        }
+        require(width > 0) {
+            "VirtualDisplay genişliği 0'dan büyük olmalıdır."
+        }
+        require(height > 0) {
+            "VirtualDisplay yüksekliği 0'dan büyük olmalıdır."
+        }
+        require(densityDpi > 0) {
+            "VirtualDisplay densityDpi 0'dan büyük olmalıdır."
+        }
 
-        /*
-         * Aynı projection altında yeni display açmadan önce eskisi kapatılır.
-         * Bu, servis yeniden başlatıldığında eski Surface'e frame akmasını engeller.
-         */
-        releaseVirtualDisplayOnly()
+        val projection =
+            mediaProjection
+                ?: throw IllegalStateException(
+                    "Ekran yakalama oturumu başlatılmadan VirtualDisplay oluşturulamaz."
+                )
 
-        val display = try {
-            projection.createVirtualDisplay(
-                name,
+        check(virtualDisplay == null) {
+            "Aynı MediaProjection oturumunda ikinci VirtualDisplay oluşturulamaz."
+        }
+
+        val display =
+            try {
+                projection.createVirtualDisplay(
+                    name,
+                    width,
+                    height,
+                    densityDpi,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                    surface,
+                    null,
+                    null
+                )
+            } catch (e: Exception) {
+                throw IllegalStateException(
+                    "VirtualDisplay oluşturulamadı: " +
+                            (e.message ?: e.javaClass.simpleName),
+                    e
+                )
+            } ?: throw IllegalStateException(
+                "VirtualDisplay oluşturulamadı."
+            )
+
+        virtualDisplay = display
+
+        return display
+    }
+
+    /**
+     * Ekran yönü/boyutu değiştiğinde Android 14+ için yeni
+     * createVirtualDisplay çağrısı yapmak yerine mevcut display'i
+     * resize eder ve yeni ImageReader Surface'ine bağlar.
+     */
+    fun resizeVirtualDisplay(
+        width: Int,
+        height: Int,
+        densityDpi: Int,
+        surface: Surface
+    ) {
+        require(width > 0)
+        require(height > 0)
+        require(densityDpi > 0)
+
+        if (mediaProjection == null) {
+            throw IllegalStateException(
+                "MediaProjection artık aktif değil."
+            )
+        }
+
+        val display =
+            virtualDisplay
+                ?: throw IllegalStateException(
+                    "Yeniden boyutlandırılacak VirtualDisplay bulunamadı."
+                )
+
+        try {
+            display.resize(
                 width,
                 height,
-                densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                surface,
-                null,
-                null
+                densityDpi
+            )
+
+            display.setSurface(
+                surface
             )
         } catch (e: Exception) {
             throw IllegalStateException(
-                "VirtualDisplay oluşturulamadı: ${e.message ?: e.javaClass.simpleName}",
+                "VirtualDisplay yeniden yapılandırılamadı: " +
+                        (e.message ?: e.javaClass.simpleName),
                 e
             )
-        } ?: throw IllegalStateException("VirtualDisplay oluşturulamadı.")
-
-        virtualDisplay = display
-        return display
+        }
     }
 
     fun stopProjection() {
@@ -153,25 +221,22 @@ class ProjectionController(
         try {
             releaseVirtualDisplayOnly()
 
-            val projection = mediaProjection
+            val projection =
+                mediaProjection
+
             mediaProjection = null
 
             if (projection != null) {
                 try {
-                    projection.unregisterCallback(projectionCallback)
+                    projection.unregisterCallback(
+                        projectionCallback
+                    )
                 } catch (_: Exception) {
-                    /*
-                     * Callback daha önce sistem tarafından kaldırılmış olabilir.
-                     * Bu durum kapanışı engellememeli.
-                     */
                 }
 
                 try {
                     projection.stop()
                 } catch (_: Exception) {
-                    /*
-                     * Projection zaten durmuş olabilir.
-                     */
                 }
             }
         } finally {
@@ -180,23 +245,19 @@ class ProjectionController(
     }
 
     fun isProjectionRunning(): Boolean {
-        return mediaProjection != null
+        return mediaProjection != null &&
+                virtualDisplay != null
     }
 
     private fun releaseVirtualDisplayOnly() {
-        val display = virtualDisplay
+        val display =
+            virtualDisplay
+
         virtualDisplay = null
 
         try {
-            /*
-             * Surface burada release edilmez.
-             * Surface lifecycle ImageFrameReader tarafından yönetilir.
-             */
             display?.release()
         } catch (_: Exception) {
-            /*
-             * Display zaten kapanmış olabilir.
-             */
         }
     }
 }
