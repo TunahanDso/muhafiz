@@ -1,8 +1,6 @@
 <resources>
     <string name="app_name">Muhafız</string>
     <string name="block_title">Muhafız</string>
-    <string name="block_message">İçerik Muhafız tarafından uygun bulunmadı ve gizlendi. Geri döndüyseniz veya ekranı değiştirdiyseniz yeniden kontrol edebilirsiniz.</string>
-    <string name="block_recheck_action">Sayfayı tekrar kontrol et</string>
-    <string name="block_safe_action">Muhafız'a dön</string>
+    <string name="block_message">İçerik Muhafız tarafından gizlendi. Koruma ayarlarına ulaşmak için bildirim panelinden Muhafız uygulamasını açın.</string>
     <string name="device_admin_description">Muhafız korumasının çocuk tarafından kolayca devre dışı bırakılmasını önlemeye yardımcı olur.</string>
 </resources>
