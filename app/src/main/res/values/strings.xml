@@ -4,8 +4,8 @@
     <string name="block_message">İçerik Muhafız tarafından gizlendi. Koruma ayarlarına ulaşmak için bildirim panelinden Muhafız uygulamasını açın.</string>
     <string name="block_message_auto">İçerik uygun bulunmadı ve gizlendi. Riskli sayfadan çıkmak için telefonun geri hareketini kullanabilirsiniz. Muhafız ekran güvenli olduğunda otomatik olarak yeniden açacaktır.</string>
     <string name="block_message_verifying">Güvenli ekran kontrol ediliyor… Koruma perdesi doğrulama tamamlanana kadar açık kalacaktır.</string>
-    <string name="block_message_manual">Bu ekran otomatik olarak doğrulanamadı. Önce telefonun geri hareketini kullanarak riskli sayfadan çıkın, ardından Muhafız’a dönün.</string>
-    <string name="block_message_legacy">Riskli içerik gizlendi. Bu Android sürümünde Muhafız, koruma perdesini kaldırmadan alttaki sayfanın güvenli olduğunu otomatik doğrulayamaz. 1. Riskli sayfadan çıkmak için telefonun geri hareketini kullanın. 2. Ardından Muhafız’a dönün.</string>
+    <string name="block_message_manual">Bu ekran otomatik doğrulanamadı. Android 14 veya üzeri kullanıyorsanız, otomatik güvenli dönüş için Muhafız’ın Erişilebilirlik hizmetinin etkin olduğundan emin olun. Erişilebilirlik kapalıysa manuel devam edin: 1. Telefonun geri hareketiyle riskli sayfadan çıkın. 2. Ardından “Muhafız’a dön” düğmesine dokunun.</string>
+    <string name="block_message_legacy">Riskli içerik gizlendi. Bu Android sürümünde otomatik güvenli ekran doğrulaması desteklenmiyor. Manuel devam edin: 1. Telefonun geri hareketiyle riskli sayfadan çıkın. 2. Ardından “Muhafız’a dön” düğmesine dokunun. Android 14 ve üzeri cihazlarda Erişilebilirlik hizmeti etkinleştirildiğinde bu kontrol otomatik yapılabilir.</string>
     <string name="block_return_to_muhafiz">Muhafız’a dön</string>
     <string name="accessibility_service_description">Muhafız, Android 14 ve üzerindeki cihazlarda engellenen içeriğin arkasındaki uygulama penceresini cihaz üzerinde doğrulamak için bu hizmeti kullanır.</string>
     <string name="accessibility_service_label">Muhafız gelişmiş ekran doğrulama</string>
