@@ -214,6 +214,25 @@ class OverlayService : Service() {
             )
         )
 
+        val recheckButton = Button(this).apply {
+            text = getString(com.tunix.nazar.R.string.block_recheck_action)
+            isAllCaps = false
+            textSize = 16f
+            setOnClickListener {
+                requestUnderlyingScreenRecheck()
+            }
+        }
+
+        content.addView(
+            recheckButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(28)
+            }
+        )
+
         val safeScreenButton = Button(this).apply {
             text = getString(com.tunix.nazar.R.string.block_safe_action)
             isAllCaps = false
@@ -229,7 +248,7 @@ class OverlayService : Service() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                topMargin = dpToPx(28)
+                topMargin = dpToPx(12)
             }
         )
 
@@ -244,6 +263,24 @@ class OverlayService : Service() {
 
         return root
     }
+
+    private fun requestUnderlyingScreenRecheck() {
+        val intent =
+            Intent(
+                this,
+                ScreenCaptureService::class.java
+            ).apply {
+                action =
+                    ScreenCaptureService.ACTION_RECHECK_UNDERLYING_CONTENT
+            }
+
+        try {
+            startService(intent)
+        } catch (_: Exception) {
+            // Recheck başlatılamazsa fail-closed: overlay açık kalır.
+        }
+    }
+
 
     private fun openMuhafizSafeScreen() {
         val intent =
