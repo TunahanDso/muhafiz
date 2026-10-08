@@ -9,7 +9,7 @@ class UnderlayVerificationStateMachineTest {
 
     private fun token(
         session: Long = 10L,
-        verification: Long = 1L,
+        verification: Long = 2L,
         windowId: Int = 42,
         packageName: String = "com.example.browser"
     ) = UnderlayVerificationToken(
@@ -22,7 +22,7 @@ class UnderlayVerificationStateMachineTest {
         val machine = UnderlayVerificationStateMachine(requiredCleanSamples = 3)
         machine.startSession(10L)
         machine.block(10L)
-        assertTrue(machine.markVerificationPending(10L, 1L))
+        assertTrue(machine.markVerificationPending(10L, 2L))
         val token = token()
         assertTrue(machine.beginVerification(token))
         return machine to token
@@ -152,7 +152,7 @@ class UnderlayVerificationStateMachineTest {
         assertTrue(
             machine.markVerificationPending(
                 generation = 10L,
-                requestedVerificationGeneration = 2L
+                requestedVerificationGeneration = 3L
             )
         )
 
@@ -182,7 +182,7 @@ class UnderlayVerificationStateMachineTest {
 
         val secondToken =
             token(
-                verification = 2L,
+                verification = 3L,
                 windowId = 99
             )
 
