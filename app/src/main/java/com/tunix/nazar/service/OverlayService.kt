@@ -12,9 +12,11 @@ import android.os.PowerManager
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.tunix.nazar.MainActivity
 
 class OverlayService : Service() {
 
@@ -188,7 +190,7 @@ class OverlayService : Service() {
         }
 
         val messageView = TextView(this).apply {
-            text = getString(com.tunix.nazar.R.string.block_message)
+            text = getString(com.tunix.nazar.R.string.block_message_legacy)
             setTextColor(Color.WHITE)
             textSize = 18f
             gravity = Gravity.CENTER
@@ -212,6 +214,26 @@ class OverlayService : Service() {
             )
         )
 
+        val returnButton = Button(this).apply {
+            text = getString(com.tunix.nazar.R.string.block_return_to_muhafiz)
+            isAllCaps = false
+            textSize = 16f
+
+            setOnClickListener {
+                openMuhafiz()
+            }
+        }
+
+        content.addView(
+            returnButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(24)
+            }
+        )
+
         root.addView(
             content,
             FrameLayout.LayoutParams(
@@ -222,6 +244,25 @@ class OverlayService : Service() {
         )
 
         return root
+    }
+
+    private fun openMuhafiz() {
+        try {
+            startActivity(
+                Intent(
+                    this,
+                    MainActivity::class.java
+                ).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
+                }
+            )
+        } catch (_: Exception) {
+            // Fail closed: overlay stays visible if the safe app cannot open.
+        }
     }
 
     private fun createLayoutParams(): WindowManager.LayoutParams {
