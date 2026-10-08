@@ -411,28 +411,20 @@ dependencies {
      * ML / NSFW MODEL
      * =============================================================
      *
-     * Mevcut kod:
+     * Legacy TensorFlow Lite 2.16.1 runtime + support library
+     * native 16 KB page-size hattı için kaldırıldı.
      *
-     * org.tensorflow.lite.Interpreter
+     * LiteRT 2.2.0, mevcut org.tensorflow.lite.Interpreter uyumluluk
+     * API'sini içerdiği için inference davranışını değiştirmeden
+     * modern native runtime'a geçiyoruz.
      *
-     * ve:
+     * tensorflow-lite-support tamamen kaldırıldı; model asset'i
+     * plain Android AssetFileDescriptor + FileChannel ile map edilir.
      *
-     * org.tensorflow.lite.support.common.FileUtil
-     *
-     * kullandigi icin mevcut TensorFlow Lite bagimliliklari
-     * simdilik korunuyor.
-     *
-     * tensorflow-lite-gpu kaldirildi.
-     *
-     * LiteRT ve native / 16 KB page-size migrasyonu ayri bir
-     * release sertlestirme adiminda ele alinacak.
+     * Model, preprocess ve risk eşikleri bu değişiklikte aynıdır.
      */
     implementation(
-        "org.tensorflow:tensorflow-lite:2.16.1"
-    )
-
-    implementation(
-        "org.tensorflow:tensorflow-lite-support:0.4.4"
+        "com.google.ai.edge.litert:litert:2.2.0"
     )
 
 
