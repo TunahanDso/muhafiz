@@ -56,19 +56,34 @@ Muhafız bir disability accessibility tool değildir ve
 
 ## Prominent disclosure
 
-Koruma başlatılırken, Accessibility etkin değilse ayrı bir in-app disclosure gösterilir.
-Disclosure özetle şunları açıklar:
+Koruma başlatılırken, Android 14+ cihazda Accessibility etkin ve daha önce açık
+kullanıcı onayı verilmiş değilse ayrı bir **tam ekran uygulama içi onay ekranı**
+gösterilir. Bu ekran ekran-yakalama açıklamasından ayrıdır ve Accessibility
+ayarları açılmadan hemen önce görünür.
 
-- erişimin alttaki uygulama penceresinin güvenli olup olmadığını doğrulamak için kullanıldığı;
-- görüntülerin cihaz üzerinde anlık işlendiği;
-- kaydedilmediği veya paylaşılmadığı;
-- kullanıcı adına tıklama/gezinme yapılmadığı.
+Ekran açıkça şunları belirtir:
+
+- AccessibilityService API'nin, engellenen içeriğin arkasındaki uygulama
+  penceresinin güvenli hale gelip gelmediğini doğrulamak için kullanıldığı;
+- koruma sırasında pencere/içerik değişikliği olayları ile görünür uygulama
+  penceresinin kimliği/paket bilgisinin değerlendirilebildiği;
+- Android 14+ desteklenen cihazlarda ilgili uygulama penceresinin anlık
+  görüntüsünün yalnız doğrulama amacıyla işlenebildiği;
+- görüntülerin yalnız cihaz belleğinde anlık işlendiği, diske/cache'e
+  kaydedilmediği, sunucuya gönderilmediği ve üçüncü taraflarla paylaşılmadığı;
+- kullanıcı adına tıklama, gesture, metin girişi, mesaj gönderme, Back/Home
+  işlemi veya otomatik gezinme yapılmadığı;
+- özelliğin isteğe bağlı olduğu ve reddedildiğinde güvenli manuel geri dönüş
+  akışının kullanılabildiği.
 
 Olumlu buton:
-**Anladım, Erişilebilirlik Ayarlarını Aç**
+**Kabul ediyorum ve Erişilebilirlik Ayarlarını Aç**
 
 Alternatif:
-**Şimdilik kullanma**
+**Erişilebilirlik olmadan devam et**
+
+Kullanıcının geri tuşuyla ekrandan çıkması veya ekranı terk etmesi onay sayılmaz.
+Olumlu onay yalnız açıkça olumlu butona basıldığında kaydedilir.
 
 Kullanıcı reddederse koruma tamamen kapanmaz; güvenli manuel geri dönüş modu kullanılır.
 
@@ -77,13 +92,16 @@ Kullanıcı reddederse koruma tamamen kapanmaz; güvenli manuel geri dönüş mo
 1. Uygulamayı açın ve reviewer/developer erişimini etkinleştirin.
 2. Koruma başlatma akışını açın.
 3. Ekran analizi disclosure'ını kabul edin.
-4. Android 14+ cihazda Accessibility disclosure'ını görüntüleyin.
-5. "Anladım, Erişilebilirlik Ayarlarını Aç" düğmesine dokunun.
-6. Sistem Accessibility ayarlarında Muhafız hizmetini etkinleştirin.
-7. Uygulamaya dönün ve MediaProjection iznini verin.
-8. Riskli test içeriğinde koruma perdesinin açıldığını doğrulayın.
-9. Sistem geri hareketiyle güvenli önceki sayfaya dönün.
-10. Koruma perdesi görünür kalırken pencere doğrulamasının gerçekleştiğini ve yalnız
+4. Android 14+ cihazda ayrı tam ekran "Erişilebilirlik İzni ve Veri Kullanımı"
+   disclosure ekranını görüntüleyin.
+5. Ekranın erişilen veri, kullanım amacı, yerel işleme/paylaşmama ve
+   kullanıcı adına otomasyon yapılmadığı açıklamalarını gösterdiğini doğrulayın.
+6. "Kabul ediyorum ve Erişilebilirlik Ayarlarını Aç" düğmesine dokunun.
+7. Sistem Accessibility ayarlarında Muhafız hizmetini etkinleştirin.
+8. Uygulamaya dönün ve MediaProjection iznini verin.
+9. Riskli test içeriğinde koruma perdesinin açıldığını doğrulayın.
+10. Sistem geri hareketiyle güvenli önceki sayfaya dönün.
+11. Koruma perdesi görünür kalırken pencere doğrulamasının gerçekleştiğini ve yalnız
     yeterli temiz kanıttan sonra perdenin otomatik kalktığını doğrulayın.
 
 ## Android 11–13 fallback
@@ -121,8 +139,8 @@ alınır."
 Video şunları tek akışta göstermelidir:
 
 - uygulamanın açılması;
-- ayrı Accessibility disclosure metninin tamamı;
-- olumlu kullanıcı onayı;
+- ayrı tam ekran Accessibility disclosure metninin tamamı;
+- "Kabul ediyorum ve Erişilebilirlik Ayarlarını Aç" ile olumlu kullanıcı onayı;
 - sistem Accessibility ayarında Muhafız'ın açılması;
 - riskli içerikte block ekranı;
 - kullanıcı geri hareketi;
