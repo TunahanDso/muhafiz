@@ -16,16 +16,23 @@ import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -104,6 +111,16 @@ class MainActivity : ComponentActivity() {
         mutableStateOf(false)
 
     private val developerAccessState =
+        mutableStateOf(false)
+
+    /*
+     * AccessibilityService API Google Play prominent-disclosure akışı.
+     *
+     * Bu ekran ayrı tutulur; ekran yakalama açıklamasıyla birleştirilmez.
+     * Kullanıcı açıkça kabul etmeden Accessibility ayarları açılmaz ve
+     * onay kaydedilmez.
+     */
+    private val showAccessibilityConsentState =
         mutableStateOf(false)
 
 
@@ -455,6 +472,9 @@ class MainActivity : ComponentActivity() {
                     subscriptionPrice =
                         subscriptionPriceState.value,
 
+                    showAccessibilityConsent =
+                        showAccessibilityConsentState.value,
+
                     onRetrySubscriptionInfoClick = {
                         billingManager.refreshPurchases()
                     },
@@ -482,6 +502,79 @@ class MainActivity : ComponentActivity() {
 
                     onPrivacyPolicyClick = {
                         openPrivacyPolicy()
+                    },
+
+                    onAccessibilityConsentAccepted = {
+                        showAccessibilityConsentState.value =
+                            false
+
+                        MuhafizAccessibilityService
+                            .setUserConsent(
+                                this,
+                                true
+                            )
+
+                        if (
+                            MuhafizAccessibilityService
+                                .isEnabled(
+                                    this
+                                )
+                        ) {
+                            startProtectionFlow()
+                        } else {
+                            pendingProtectionStartAfterAccessibilitySettings =
+                                true
+
+                            try {
+                                startActivity(
+                                    MuhafizAccessibilityService
+                                        .openSettingsIntent()
+                                )
+                            } catch (_: Exception) {
+                                pendingProtectionStartAfterAccessibilitySettings =
+                                    false
+
+                                showToast(
+                                    message =
+                                        "Erişilebilirlik ayarları açılamadı. " +
+                                                "Manuel geri dönüş modu kullanılacak.",
+                                    long = true
+                                )
+
+                                startProtectionFlow()
+                            }
+                        }
+                    },
+
+                    onAccessibilityConsentDeclined = {
+                        showAccessibilityConsentState.value =
+                            false
+
+                        MuhafizAccessibilityService
+                            .setUserConsent(
+                                this,
+                                false
+                            )
+
+                        showToast(
+                            message =
+                                "Erişilebilirlik izni verilmedi. " +
+                                        "Koruma güvenli manuel geri dönüş modunda başlatılacak.",
+                            long = true
+                        )
+
+                        startProtectionFlow()
+                    },
+
+                    onAccessibilityConsentDismissed = {
+                        showAccessibilityConsentState.value =
+                            false
+
+                        MuhafizAccessibilityService
+                            .setUserConsent(
+                                this,
+                                false
+                            )
                     },
 
 
@@ -863,91 +956,14 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        showAccessibilityDisclosure()
-    }
-
-
-    private fun showAccessibilityDisclosure() {
-        android.app.AlertDialog.Builder(
-            this
-        )
-            .setTitle(
-                "Gelişmiş ekran doğrulama"
-            )
-            .setMessage(
-                "Muhafız, riskli içerik engellendikten sonra alttaki uygulama " +
-                        "penceresinin artık güvenli olup olmadığını doğrulamak için " +
-                        "Android Erişilebilirlik hizmetini kullanabilir.\n\n" +
-                        "Bu erişim yalnızca koruma sırasında pencere değişikliklerini " +
-                        "algılamak ve Android 14 ve üzerindeki desteklenen cihazlarda " +
-                        "ilgili uygulama penceresinin görüntüsünü cihaz üzerinde analiz " +
-                        "etmek için kullanılır.\n\n" +
-                        "Pencere görüntüleri cihaz üzerinde anlık olarak işlenir; " +
-                        "kaydedilmez, sunucuya gönderilmez ve üçüncü taraflarla " +
-                        "paylaşılmaz. Muhafız bu erişimi sizin adınıza tıklama yapmak, " +
-                        "mesaj göndermek, metin yazmak veya uygulamalarda otomatik " +
-                        "gezinmek için kullanmaz."
-            )
-            .setPositiveButton(
-                "Anladım, Erişilebilirlik Ayarlarını Aç"
-            ) { _, _ ->
-                MuhafizAccessibilityService
-                    .setUserConsent(
-                        this,
-                        true
-                    )
-
-                if (
-                    MuhafizAccessibilityService
-                        .isEnabled(
-                            this
-                        )
-                ) {
-                    startProtectionFlow()
-                    return@setPositiveButton
-                }
-
-                pendingProtectionStartAfterAccessibilitySettings =
-                    true
-
-                try {
-                    startActivity(
-                        MuhafizAccessibilityService
-                            .openSettingsIntent()
-                    )
-                } catch (_: Exception) {
-                    pendingProtectionStartAfterAccessibilitySettings =
-                        false
-
-                    showToast(
-                        message =
-                            "Erişilebilirlik ayarları açılamadı. " +
-                                    "Manuel geri dönüş modu kullanılacak.",
-                        long = true
-                    )
-
-                    startProtectionFlow()
-                }
-            }
-            .setNegativeButton(
-                "Şimdilik kullanma"
-            ) { _, _ ->
-                MuhafizAccessibilityService
-                    .setUserConsent(
-                        this,
-                        false
-                    )
-
-                showToast(
-                    message =
-                        "Koruma manuel geri dönüş modunda başlatılacak.",
-                    long = true
-                )
-
-                startProtectionFlow()
-            }
-            .setCancelable(true)
-            .show()
+        /*
+         * Google Play prominent disclosure:
+         * Accessibility ayarları açılmadan hemen önce uygulama içindeki
+         * ayrı onay ekranı gösterilir. Kullanıcının geri çıkması veya
+         * ekranı terk etmesi onay sayılmaz.
+         */
+        showAccessibilityConsentState.value =
+            true
     }
 
 
@@ -1261,11 +1277,17 @@ private fun MuhafizApp(
     hasDeveloperAccess: Boolean,
     isBillingReady: Boolean,
     subscriptionPrice: String?,
+    showAccessibilityConsent: Boolean,
 
     onRetrySubscriptionInfoClick: () -> Unit,
     onSubscribeClick: () -> Unit,
     onManageSubscriptionClick: () -> Unit,
     onPrivacyPolicyClick: () -> Unit,
+
+    onAccessibilityConsentAccepted: () -> Unit,
+    onAccessibilityConsentDeclined: () -> Unit,
+    onAccessibilityConsentDismissed: () -> Unit,
+
     onShowMessage: (String) -> Unit,
 
     onRequestProtectionStart: () -> Unit,
@@ -1309,6 +1331,15 @@ private fun MuhafizApp(
 
     var showScreenAnalysisDisclosure by remember {
         mutableStateOf(false)
+    }
+
+    if (showAccessibilityConsent) {
+        AccessibilityConsentScreen(
+            onAccept = onAccessibilityConsentAccepted,
+            onDecline = onAccessibilityConsentDeclined,
+            onDismiss = onAccessibilityConsentDismissed
+        )
+        return
     }
 
 
@@ -1677,6 +1708,148 @@ private fun MuhafizApp(
                             )
                         }
                     }
+                )
+            }
+        }
+    }
+}
+
+
+/*
+ * =============================================================
+ * ACCESSIBILITY PROMINENT DISCLOSURE + CONSENT
+ * =============================================================
+ *
+ * Google Play için bu ekran:
+ * - uygulamanın normal akışında,
+ * - Accessibility ayarları açılmadan hemen önce,
+ * - ekran yakalama açıklamasından ayrı,
+ * - açık olumlu kullanıcı eylemi gerektirecek şekilde
+ * gösterilir.
+ */
+@Composable
+private fun AccessibilityConsentScreen(
+    onAccept: () -> Unit,
+    onDecline: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    BackHandler(
+        onBack = onDismiss
+    )
+
+    Surface(
+        modifier =
+            Modifier.fillMaxSize()
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(
+                        rememberScrollState()
+                    )
+                    .padding(24.dp),
+            verticalArrangement =
+                Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Erişilebilirlik İzni ve Veri Kullanımı",
+                style =
+                    MaterialTheme.typography.headlineSmall
+            )
+
+            Text(
+                text =
+                    "Muhafız, riskli görsel içerik engellendiğinde koruma " +
+                            "perdesinin arkasındaki uygulama penceresinin artık " +
+                            "güvenli olup olmadığını doğrulamak için Android " +
+                            "Erişilebilirlik Hizmeti API'sini kullanır.",
+                style =
+                    MaterialTheme.typography.bodyLarge
+            )
+
+            Text(
+                text = "Erişilen bilgiler",
+                style =
+                    MaterialTheme.typography.titleMedium
+            )
+
+            Text(
+                text =
+                    "Koruma sırasında pencere ve içerik değişikliği olayları, " +
+                            "görünür uygulama penceresinin kimliği/paket bilgisi ve " +
+                            "Android 14 ve üzerindeki desteklenen cihazlarda yalnızca " +
+                            "doğrulanması gereken ilgili uygulama penceresinin anlık " +
+                            "görüntüsü işlenebilir.",
+                style =
+                    MaterialTheme.typography.bodyMedium
+            )
+
+            Text(
+                text = "Bu veriler nasıl kullanılır?",
+                style =
+                    MaterialTheme.typography.titleMedium
+            )
+
+            Text(
+                text =
+                    "Bu bilgiler yalnızca engellenen ekranın arkasındaki içeriğin " +
+                            "güvenli hale gelip gelmediğini cihaz üzerinde doğrulamak " +
+                            "için kullanılır. Pencere görüntüleri yalnız cihaz " +
+                            "belleğinde anlık olarak analiz edilir; diske veya önbelleğe " +
+                            "kaydedilmez, sunucuya gönderilmez ve üçüncü taraflarla " +
+                            "paylaşılmaz.",
+                style =
+                    MaterialTheme.typography.bodyMedium
+            )
+
+            Text(
+                text = "Muhafız bu erişimle ne yapmaz?",
+                style =
+                    MaterialTheme.typography.titleMedium
+            )
+
+            Text(
+                text =
+                    "Muhafız Erişilebilirlik hizmetini kullanıcı adına tıklama " +
+                            "yapmak, hareket/gesture göndermek, metin yazmak, mesaj " +
+                            "göndermek, geri/ana ekran işlemi yapmak veya uygulamalarda " +
+                            "otomatik gezinmek için kullanmaz.",
+                style =
+                    MaterialTheme.typography.bodyMedium
+            )
+
+            Text(
+                text =
+                    "Bu gelişmiş doğrulama isteğe bağlıdır. Kabul etmezseniz " +
+                            "Muhafız korumayı kapatmaz; desteklenen durumlarda güvenli " +
+                            "manuel geri dönüş yöntemi kullanılır.",
+                style =
+                    MaterialTheme.typography.bodyMedium
+            )
+
+            Spacer(
+                modifier =
+                    Modifier.height(8.dp)
+            )
+
+            Button(
+                onClick = onAccept,
+                modifier =
+                    Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    "Kabul ediyorum ve Erişilebilirlik Ayarlarını Aç"
+                )
+            }
+
+            TextButton(
+                onClick = onDecline,
+                modifier =
+                    Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    "Erişilebilirlik olmadan devam et"
                 )
             }
         }
